@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -23,7 +24,7 @@
             margin: 50px auto;
             background: white;
             border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
             padding: 40px;
         }
 
@@ -50,7 +51,8 @@
             font-size: 14px;
         }
 
-        input[type="url"], input[type="text"] {
+        input[type="url"],
+        input[type="text"] {
             width: 100%;
             padding: 15px;
             border: 2px solid #e1e5e9;
@@ -59,7 +61,8 @@
             transition: border-color 0.3s ease;
         }
 
-        input[type="url"]:focus, input[type="text"]:focus {
+        input[type="url"]:focus,
+        input[type="text"]:focus {
             outline: none;
             border-color: #667eea;
         }
@@ -76,10 +79,14 @@
             color: #999;
             font-size: 14px;
             pointer-events: none;
+            white-space: nowrap;
+            max-width: calc(100% - 30px);
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .custom-slug-input {
-            padding-left: 80px !important;
+            padding-left: 120px !important;
         }
 
         button {
@@ -97,7 +104,7 @@
 
         button:hover {
             transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
         }
 
         button:active {
@@ -124,13 +131,15 @@
 
         .shortened-url {
             display: flex;
-            align-items: center;
+            align-items: stretch;
             gap: 10px;
             margin-top: 10px;
+            flex-wrap: wrap;
         }
 
         .shortened-url input {
             flex: 1;
+            min-width: 200px;
             padding: 10px;
             border: 1px solid #ddd;
             border-radius: 5px;
@@ -147,10 +156,18 @@
             cursor: pointer;
             font-size: 14px;
             white-space: nowrap;
+            flex-shrink: 0;
+            transition: all 0.3s ease;
+            min-width: 80px;
         }
 
         .copy-btn:hover {
             background: #218838;
+            transform: translateY(-1px);
+        }
+
+        .copy-btn:active {
+            transform: translateY(0);
         }
 
         .error {
@@ -192,9 +209,55 @@
             h1 {
                 font-size: 2em;
             }
+
+            .custom-slug-input {
+                padding-left: 100px !important;
+            }
+
+            .url-prefix {
+                font-size: 12px;
+                max-width: 85px;
+            }
+
+            .shortened-url {
+                flex-direction: column;
+                gap: 15px;
+            }
+
+            .shortened-url input {
+                min-width: unset;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                margin: 10px auto;
+                padding: 15px;
+            }
+
+            .custom-slug-input {
+                padding-left: 85px !important;
+            }
+
+            .url-prefix {
+                font-size: 11px;
+                max-width: 70px;
+            }
+
+            input[type="url"],
+            input[type="text"] {
+                padding: 12px;
+                font-size: 14px;
+            }
+
+            button {
+                padding: 12px;
+                font-size: 14px;
+            }
         }
     </style>
 </head>
+
 <body>
     <div class="container">
         <h1>URL Shortener</h1>
@@ -209,9 +272,11 @@
                 <label for="customSlug">Custom short URL (optional):</label>
                 <div class="custom-slug-group">
                     <span class="url-prefix">yourdomain.com/</span>
-                    <input type="text" id="customSlug" name="customSlug" class="custom-slug-input" placeholder="my-custom-link" pattern="[a-zA-Z0-9\-_]+" maxlength="50">
+                    <input type="text" id="customSlug" name="customSlug" class="custom-slug-input"
+                        placeholder="my-custom-link" pattern="[a-zA-Z0-9\-_]+" maxlength="50">
                 </div>
-                <div class="help-text">Leave empty for auto-generated short URL. Only letters, numbers, hyphens, and underscores allowed.</div>
+                <div class="help-text">Leave empty for auto-generated short URL. Only letters, numbers, hyphens, and
+                    underscores allowed.</div>
             </div>
 
             <button type="submit">Shorten URL</button>
@@ -235,9 +300,24 @@
     <script>
         // Get the current domain for the URL prefix
         const currentDomain = window.location.host;
-        document.querySelector('.url-prefix').textContent = currentDomain + '/';
+        const urlPrefix = document.querySelector('.url-prefix');
+        const customSlugInput = document.getElementById('customSlug');
 
-        document.getElementById('urlForm').addEventListener('submit', async function(e) {
+        urlPrefix.textContent = currentDomain + '/';
+
+        // Dynamically adjust input padding based on prefix width
+        function adjustInputPadding() {
+            const prefixWidth = urlPrefix.getBoundingClientRect().width;
+            const minPadding = window.innerWidth <= 480 ? 85 : (window.innerWidth <= 768 ? 100 : 120);
+            const calculatedPadding = Math.max(minPadding, prefixWidth + 25);
+            customSlugInput.style.paddingLeft = calculatedPadding + 'px';
+        }
+
+        // Adjust padding on load and resize
+        window.addEventListener('load', adjustInputPadding);
+        window.addEventListener('resize', adjustInputPadding);
+
+        document.getElementById('urlForm').addEventListener('submit', async function (e) {
             e.preventDefault();
 
             const longUrl = document.getElementById('longUrl').value;
@@ -275,7 +355,7 @@
 
                 if (response.ok && result.status === 200) {
                     // Show success result
-                    const shortUrl = window.location.origin + result.key;
+                    const shortUrl = window.location.origin + (result.key.startsWith('/') ? result.key : '/' + result.key);
                     document.getElementById('shortUrlOutput').value = shortUrl;
                     document.getElementById('result').classList.add('show');
 
@@ -298,33 +378,60 @@
             }
         });
 
-        // Copy to clipboard function
-        function copyToClipboard() {
+        // Modern copy to clipboard function with fallbacks
+        async function copyToClipboard() {
             const shortUrlInput = document.getElementById('shortUrlOutput');
-            shortUrlInput.select();
-            shortUrlInput.setSelectionRange(0, 99999);
+            const copyBtn = document.querySelector('.copy-btn');
+            const originalText = copyBtn.textContent;
+            const originalBg = copyBtn.style.backgroundColor || '#28a745';
+
+            if (!shortUrlInput.value) {
+                showCopyFeedback(copyBtn, 'No URL!', '#dc3545', originalText, originalBg);
+                return;
+            }
 
             try {
-                document.execCommand('copy');
+                // Try modern Clipboard API first
+                if (navigator.clipboard && window.isSecureContext) {
+                    await navigator.clipboard.writeText(shortUrlInput.value);
+                    showCopyFeedback(copyBtn, 'Copied!', '#28a745', originalText, originalBg);
+                } else {
+                    // Fallback to legacy method
+                    shortUrlInput.select();
+                    shortUrlInput.setSelectionRange(0, 99999);
 
-                // Visual feedback
-                const copyBtn = document.querySelector('.copy-btn');
-                const originalText = copyBtn.textContent;
-                copyBtn.textContent = 'Copied!';
-                copyBtn.style.background = '#28a745';
-
-                setTimeout(() => {
-                    copyBtn.textContent = originalText;
-                    copyBtn.style.background = '#28a745';
-                }, 2000);
-
+                    const successful = document.execCommand('copy');
+                    if (successful) {
+                        showCopyFeedback(copyBtn, 'Copied!', '#28a745', originalText, originalBg);
+                    } else {
+                        throw new Error('execCommand failed');
+                    }
+                }
             } catch (err) {
                 console.error('Failed to copy: ', err);
+
+                // Final fallback - show the URL and ask user to copy manually
+                shortUrlInput.select();
+                shortUrlInput.focus();
+                showCopyFeedback(copyBtn, 'Select & Copy', '#ffc107', originalText, originalBg, 3000);
             }
         }
 
+        // Helper function for copy feedback
+        function showCopyFeedback(button, text, bgColor, originalText, originalBg, duration = 2000) {
+            button.textContent = text;
+            button.style.backgroundColor = bgColor;
+            button.style.transform = 'scale(0.95)';
+
+            setTimeout(() => {
+                button.textContent = originalText;
+                button.style.backgroundColor = originalBg;
+                button.style.transform = 'scale(1)';
+            }, duration);
+        }
+
         // Custom slug validation
-        document.getElementById('customSlug').addEventListener('input', function(e) {
+        document.getElementById('customSlug').addEventListener('input', function (e) {
             const value = e.target.value;
             const validPattern = /^[a-zA-Z0-9\-_]*$/;
 
@@ -336,4 +443,5 @@
         });
     </script>
 </body>
+
 </html>
