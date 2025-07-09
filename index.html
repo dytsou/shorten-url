@@ -72,21 +72,30 @@
         }
 
         .url-prefix {
-            position: absolute;
-            left: 15px;
-            top: 50%;
-            transform: translateY(-50%);
-            color: #999;
-            font-size: 14px;
-            pointer-events: none;
-            white-space: nowrap;
-            max-width: calc(100% - 30px);
-            overflow: hidden;
-            text-overflow: ellipsis;
+            display: block;
+            padding: 6px 10px;
+            background: #f8f9fa;
+            border: 2px solid #e1e5e9;
+            border-bottom: none;
+            border-radius: 10px 10px 0 0;
+            color: #666;
+            font-size: 12px;
+            font-weight: 400;
+            margin-bottom: 0;
+            word-break: break-all;
         }
 
         .custom-slug-input {
-            padding-left: 120px !important;
+            border-radius: 0 0 10px 10px !important;
+            border-top: none !important;
+            padding: 15px !important;
+        }
+
+        .custom-slug-input:focus+.url-prefix,
+        .custom-slug-input:focus~.url-prefix,
+        .custom-slug-group:focus-within .url-prefix {
+            border-color: #667eea;
+            background: #f0f3ff;
         }
 
         button {
@@ -210,13 +219,9 @@
                 font-size: 2em;
             }
 
-            .custom-slug-input {
-                padding-left: 100px !important;
-            }
-
             .url-prefix {
                 font-size: 12px;
-                max-width: 85px;
+                padding: 6px 12px;
             }
 
             .shortened-url {
@@ -235,13 +240,9 @@
                 padding: 15px;
             }
 
-            .custom-slug-input {
-                padding-left: 85px !important;
-            }
-
             .url-prefix {
                 font-size: 11px;
-                max-width: 70px;
+                padding: 5px 10px;
             }
 
             input[type="url"],
@@ -305,17 +306,7 @@
 
         urlPrefix.textContent = currentDomain + '/';
 
-        // Dynamically adjust input padding based on prefix width
-        function adjustInputPadding() {
-            const prefixWidth = urlPrefix.getBoundingClientRect().width;
-            const minPadding = window.innerWidth <= 480 ? 85 : (window.innerWidth <= 768 ? 100 : 120);
-            const calculatedPadding = Math.max(minPadding, prefixWidth + 25);
-            customSlugInput.style.paddingLeft = calculatedPadding + 'px';
-        }
 
-        // Adjust padding on load and resize
-        window.addEventListener('load', adjustInputPadding);
-        window.addEventListener('resize', adjustInputPadding);
 
         document.getElementById('urlForm').addEventListener('submit', async function (e) {
             e.preventDefault();
