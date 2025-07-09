@@ -85,16 +85,10 @@ async function copyToClipboard() {
       await navigator.clipboard.writeText(shortUrlInput.value);
       showCopyFeedback(copyBtn, 'Copied!', '#28a745', originalText, originalBg);
     } else {
-      // Fallback to legacy method
+      // Fallback: ask user to copy manually
       shortUrlInput.select();
-      shortUrlInput.setSelectionRange(0, 99999);
-
-      const successful = document.execCommand('copy');
-      if (successful) {
-        showCopyFeedback(copyBtn, 'Copied!', '#28a745', originalText, originalBg);
-      } else {
-        throw new Error('execCommand failed');
-      }
+      shortUrlInput.focus();
+      showCopyFeedback(copyBtn, 'Select & Copy', '#ffc107', originalText, originalBg, 3000);
     }
   } catch (err) {
     console.error('Failed to copy: ', err);
