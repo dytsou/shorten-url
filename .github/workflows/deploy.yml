@@ -1,0 +1,73 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+    inputs:
+      custom_domain:
+        description: 'Custom domain for CNAME'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+
+
+      - name: Handle CNAME
+        run: |
+          # Check for custom domain from workflow dispatch
+          if [ "${{ github.event.inputs.custom_domain }}" != "" ]; then
+            echo "Using custom domain from workflow dispatch: ${{ github.event.inputs.custom_domain }}"
+            echo "${{ github.event.inputs.custom_domain }}" > CNAME 
+            cat CNAME
+          # Check for custom domain from secrets
+          elif [ "${{ secrets.CUSTOM_DOMAIN }}" != "" ]; then
+            echo "Using custom domain from secrets: ${{ secrets.CUSTOM_DOMAIN }}"
+            echo "${{ secrets.CUSTOM_DOMAIN }}" > CNAME
+            cat CNAME
+          else
+            echo "No custom domain specified, using default GitHub Pages URL"
+            if [ -f "CNAME" ]; then
+              rm CNAME
+              echo "Removed existing CNAME file"
+            fi
+          fi
+
+
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4 
