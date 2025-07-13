@@ -37,10 +37,33 @@ try {
             min_random_key_length: 6,
             max_custom_slug_length: 50,
             random_chars: 'ABCDEFGHJKMNPQRSTWXYZabcdefhijkmnprstwxyz2345678',
-            reserved_slugs: ['api', 'admin', 'www', 'mail', 'ftp', 'localhost', 'password']
+            reserved_slugs: ['api', 'admin', 'www', 'mail', 'ftp', 'localhost', 'password', 'auth']
+        },
+        // Authentication configuration
+        auth: {
+            enabled: true,
+            require_auth_to_create: true, // Require authentication to create URLs
+            fingerprint_primary: true, // Use fingerprint as primary auth method
+            password_fallback: true, // Allow password fallback if fingerprint fails
+            rate_limit_attempts: 5,
+            rate_limit_window: 300000, // 5 minutes in milliseconds
+            session_timeout: 1800000, // 30 minutes in milliseconds
+            pbkdf2_iterations: 100000,
+            salt_length: 32,
+            admin_key: "admin-secret-key-change-this" // Change this in production
         }
     };
 }
+
+// Authentication types
+const AUTH_TYPES = {
+    NONE: 'none',
+    FINGERPRINT: 'fingerprint',
+    PASSWORD: 'password'
+};
+
+// Rate limiting storage (in-memory for simplicity)
+const rateLimitStore = new Map();
 
 const html404 = `<!DOCTYPE html>
 <body>
@@ -58,14 +81,21 @@ if (config.worker.cors == "on") {
     response_header = {
         "content-type": "text/html;charset=UTF-8",
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST",
+        "Access-Control-Allow-Methods": "POST, GET, PUT, DELETE",
     }
+}
+
+// Generate secure random bytes
+async function generateSecureRandom(length) {
+    const array = new Uint8Array(length);
+    crypto.getRandomValues(array);
+    return array;
 }
 
 // Generate random string for short URLs
 async function randomString(len) {
     len = len || config.worker.min_random_key_length;
-    let $chars = config.worker.random_chars; // Configurable character set
+    let $chars = config.worker.random_chars;
     let maxPos = $chars.length;
     let result = '';
     for (i = 0; i < len; i++) {
@@ -87,6 +117,82 @@ async function sha512(url) {
     const hashArray = Array.from(new Uint8Array(url_digest)); // convert buffer to byte array
     const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     return hashHex
+}
+
+// Generate salt for password hashing
+async function generateSalt() {
+    const salt = await generateSecureRandom(config.auth.salt_length);
+    return Array.from(salt, byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+// Hash password using PBKDF2
+async function hashPassword(password, salt) {
+    const encoder = new TextEncoder();
+    const passwordBuffer = encoder.encode(password);
+    const saltBuffer = encoder.encode(salt);
+
+    const key = await crypto.subtle.importKey(
+        'raw',
+        passwordBuffer,
+        { name: 'PBKDF2' },
+        false,
+        ['deriveBits']
+    );
+
+    const derivedBits = await crypto.subtle.deriveBits(
+        {
+            name: 'PBKDF2',
+            salt: saltBuffer,
+            iterations: config.auth.pbkdf2_iterations,
+            hash: 'SHA-256'
+        },
+        key,
+        256
+    );
+
+    const hashArray = Array.from(new Uint8Array(derivedBits));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Verify password against hash
+async function verifyPassword(password, hash, salt) {
+    const computedHash = await hashPassword(password, salt);
+    return computedHash === hash;
+}
+
+// Generate session token
+async function generateSessionToken() {
+    const tokenBytes = await generateSecureRandom(32);
+    return Array.from(tokenBytes, byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+// Rate limiting check
+function checkRateLimit(ip, action) {
+    const key = `${ip}:${action}`;
+    const now = Date.now();
+    const window = config.auth.rate_limit_window;
+    const limit = config.auth.rate_limit_attempts;
+
+    if (!rateLimitStore.has(key)) {
+        rateLimitStore.set(key, { count: 1, resetTime: now + window });
+        return true;
+    }
+
+    const record = rateLimitStore.get(key);
+
+    if (now > record.resetTime) {
+        // Reset the window
+        rateLimitStore.set(key, { count: 1, resetTime: now + window });
+        return true;
+    }
+
+    if (record.count >= limit) {
+        return false;
+    }
+
+    record.count++;
+    rateLimitStore.set(key, record);
+    return true;
 }
 
 // Validate URL format
@@ -125,15 +231,424 @@ async function validateCustomSlug(slug) {
     return true;
 }
 
-// Save URL with random or custom key
+// Get stored credentials
+async function getCredentials() {
+    const credData = await LINKS.get('admin:credentials');
+    if (!credData) {
+        return null;
+    }
+    try {
+        return JSON.parse(credData);
+    } catch (e) {
+        return null;
+    }
+}
+
+// Verify session token
+async function verifySession(sessionToken) {
+    if (!sessionToken) return false;
+
+    const sessionData = await LINKS.get(`session:${sessionToken}`);
+    if (!sessionData) return false;
+
+    try {
+        const session = JSON.parse(sessionData);
+        return session.expires > Date.now();
+    } catch (e) {
+        return false;
+    }
+}
+
+// Create session
+async function createSession() {
+    const sessionToken = await generateSessionToken();
+    const sessionData = {
+        expires: Date.now() + config.auth.session_timeout,
+        created: Date.now()
+    };
+
+    await LINKS.put(`session:${sessionToken}`, JSON.stringify(sessionData), {
+        expirationTtl: config.auth.session_timeout / 1000
+    });
+
+    return sessionToken;
+}
+
+// Verify fingerprint credential (simplified for demo)
+async function verifyFingerprintCredential(credentialData) {
+    // In a real implementation, you would verify the WebAuthn assertion
+    // For now, we'll check if the credential ID matches stored credentials
+    const credentials = await getCredentials();
+    if (!credentials || !credentials.fingerprint) {
+        return false;
+    }
+
+    // Simplified verification - in production use proper WebAuthn verification
+    return credentialData && credentialData.id === credentials.fingerprint.credentialId;
+}
+
+// Handle admin endpoint
+async function handleAdminRequest(request, path) {
+    const pathSegments = path.split('/');
+
+    if (pathSegments[1] === 'setup') {
+        // GET /admin/setup - Show setup page
+        if (request.method === 'GET') {
+            return new Response(generateAdminSetupPage(), {
+                headers: { "content-type": "text/html;charset=UTF-8" }
+            });
+        }
+
+        // POST /admin/setup - Store credentials
+        if (request.method === 'POST') {
+            try {
+                const data = await request.json();
+
+                // Verify admin key
+                if (data.admin_key !== config.auth.admin_key) {
+                    return new Response(JSON.stringify({
+                        success: false,
+                        message: "Invalid admin key"
+                    }), {
+                        status: 401,
+                        headers: { "content-type": "application/json" }
+                    });
+                }
+
+                const credentials = {
+                    fingerprint: data.fingerprint || null,
+                    password: null,
+                    created: new Date().toISOString()
+                };
+
+                // Hash password if provided
+                if (data.password) {
+                    const salt = await generateSalt();
+                    const hash = await hashPassword(data.password, salt);
+                    credentials.password = { hash, salt };
+                }
+
+                await LINKS.put('admin:credentials', JSON.stringify(credentials));
+
+                return new Response(JSON.stringify({
+                    success: true,
+                    message: "Credentials saved successfully"
+                }), {
+                    headers: { "content-type": "application/json" }
+                });
+
+            } catch (e) {
+                return new Response(JSON.stringify({
+                    success: false,
+                    message: "Invalid request data"
+                }), {
+                    status: 400,
+                    headers: { "content-type": "application/json" }
+                });
+            }
+        }
+    }
+
+    return new Response(html404, {
+        status: 404,
+        headers: { "content-type": "text/html;charset=UTF-8" }
+    });
+}
+
+// Generate admin setup page
+function generateAdminSetupPage() {
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Setup - URL Shortener</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .setup-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 2em;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #555;
+            font-weight: 500;
+        }
+        input[type="password"], input[type="text"] {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e1e5e9;
+            border-radius: 10px;
+            font-size: 16px;
+        }
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-bottom: 15px;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+        }
+        .fingerprint-btn {
+            background: linear-gradient(45deg, #28a745, #20c997);
+        }
+        .help-text {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        .success, .error {
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="setup-container">
+        <h1>🔧 Admin Setup</h1>
+        
+        <div id="message" class="hidden"></div>
+        
+        <form id="setupForm">
+            <div class="form-group">
+                <label for="adminKey">Admin Key:</label>
+                <input type="password" id="adminKey" required>
+                <div class="help-text">Enter the admin key from your configuration</div>
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Fallback Password:</label>
+                <input type="password" id="password">
+                <div class="help-text">Optional: Password to use when fingerprint authentication fails</div>
+            </div>
+            
+            <button type="button" class="btn fingerprint-btn" onclick="setupFingerprint()">
+                👆 Setup Fingerprint Authentication
+            </button>
+            
+            <button type="submit" class="btn">Save Configuration</button>
+        </form>
+    </div>
+
+    <script>
+        let fingerprintCredential = null;
+        
+        async function setupFingerprint() {
+            try {
+                // Create a new credential
+                const credential = await navigator.credentials.create({
+                    publicKey: {
+                        challenge: new Uint8Array(32),
+                        rp: {
+                            name: "URL Shortener",
+                            id: window.location.hostname
+                        },
+                        user: {
+                            id: new TextEncoder().encode("admin"),
+                            name: "admin",
+                            displayName: "Administrator"
+                        },
+                        pubKeyCredParams: [{ alg: -7, type: "public-key" }],
+                        timeout: 60000,
+                        attestation: "direct"
+                    }
+                });
+                
+                fingerprintCredential = {
+                    credentialId: Array.from(new Uint8Array(credential.rawId), b => b.toString(16).padStart(2, '0')).join(''),
+                    publicKey: Array.from(new Uint8Array(credential.response.publicKey || []), b => b.toString(16).padStart(2, '0')).join('')
+                };
+                
+                showMessage("Fingerprint credential created successfully!", "success");
+                
+            } catch (error) {
+                console.error('Fingerprint setup failed:', error);
+                showMessage("Fingerprint setup failed. Make sure your device supports biometric authentication.", "error");
+            }
+        }
+        
+        document.getElementById('setupForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const adminKey = document.getElementById('adminKey').value;
+            const password = document.getElementById('password').value;
+            
+            if (!adminKey) {
+                showMessage("Admin key is required", "error");
+                return;
+            }
+            
+            try {
+                const response = await fetch('/admin/setup', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        admin_key: adminKey,
+                        password: password || null,
+                        fingerprint: fingerprintCredential
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showMessage(result.message, "success");
+                    document.getElementById('setupForm').reset();
+                    fingerprintCredential = null;
+                } else {
+                    showMessage(result.message, "error");
+                }
+                
+            } catch (error) {
+                showMessage("Setup failed. Please try again.", "error");
+            }
+        });
+        
+        function showMessage(message, type) {
+            const messageEl = document.getElementById('message');
+            messageEl.textContent = message;
+            messageEl.className = type;
+            messageEl.classList.remove('hidden');
+            
+            if (type === 'success') {
+                setTimeout(() => {
+                    messageEl.classList.add('hidden');
+                }, 5000);
+            }
+        }
+    </script>
+</body>
+</html>`;
+}
+
+// Handle authentication before URL creation
+async function handleAuthRequest(request) {
+    const clientIP = request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For') || 'unknown';
+
+    // Check rate limiting
+    if (!checkRateLimit(clientIP, 'auth')) {
+        return new Response(JSON.stringify({
+            success: false,
+            message: "Too many authentication attempts. Please try again later."
+        }), {
+            status: 429,
+            headers: { "content-type": "application/json" }
+        });
+    }
+
+    try {
+        const data = await request.json();
+        const credentials = await getCredentials();
+
+        if (!credentials) {
+            return new Response(JSON.stringify({
+                success: false,
+                message: "Authentication not configured. Please contact administrator."
+            }), {
+                status: 500,
+                headers: { "content-type": "application/json" }
+            });
+        }
+
+        let authSuccess = false;
+
+        // Try fingerprint authentication first
+        if (data.type === 'fingerprint' && data.credential) {
+            authSuccess = await verifyFingerprintCredential(data.credential);
+        }
+
+        // Fall back to password if fingerprint fails or not provided
+        if (!authSuccess && data.type === 'password' && data.password && credentials.password) {
+            authSuccess = await verifyPassword(data.password, credentials.password.hash, credentials.password.salt);
+        }
+
+        if (authSuccess) {
+            const sessionToken = await createSession();
+            return new Response(JSON.stringify({
+                success: true,
+                sessionToken: sessionToken,
+                message: "Authentication successful"
+            }), {
+                headers: { "content-type": "application/json" }
+            });
+        } else {
+            return new Response(JSON.stringify({
+                success: false,
+                message: "Authentication failed"
+            }), {
+                status: 401,
+                headers: { "content-type": "application/json" }
+            });
+        }
+
+    } catch (e) {
+        return new Response(JSON.stringify({
+            success: false,
+            message: "Invalid request data"
+        }), {
+            status: 400,
+            headers: { "content-type": "application/json" }
+        });
+    }
+}
+
+// Save URL (simplified, no authentication data stored)
 async function save_url(URL, customSlug = null) {
     let random_key;
 
     if (customSlug) {
-        // Use custom slug if provided
         random_key = customSlug;
     } else {
-        // Generate random key
         random_key = await randomString();
     }
 
@@ -141,12 +656,11 @@ async function save_url(URL, customSlug = null) {
     console.log(is_exist);
 
     if (is_exist == null) {
-        return await LINKS.put(random_key, URL), random_key;
+        await LINKS.put(random_key, URL);
+        return undefined, random_key;
     } else if (customSlug) {
-        // If custom slug already exists, return error
         return "CUSTOM_SLUG_EXISTS", null;
     } else {
-        // If random key exists, try again
         return save_url(URL);
     }
 }
@@ -197,9 +711,33 @@ async function is_url_safe(url) {
 async function handleRequest(request) {
     console.log(request);
 
+    const requestURL = new URL(request.url);
+    const pathSegments = requestURL.pathname.split("/").filter(segment => segment);
+    const path = pathSegments[0];
+
+    // Handle admin endpoints
+    if (path === 'admin') {
+        return handleAdminRequest(request, requestURL.pathname.substring(1));
+    }
+
+    // Handle authentication endpoint
+    if (path === 'auth' && request.method === 'POST') {
+        return handleAuthRequest(request);
+    }
+
     if (request.method === "POST") {
         let req = await request.json();
         console.log(req["url"]);
+
+        // Check authentication if required
+        if (config.auth.enabled && config.auth.require_auth_to_create) {
+            const sessionToken = req["sessionToken"];
+            if (!sessionToken || !(await verifySession(sessionToken))) {
+                return new Response(`{"status":401,"message":"Authentication required to create URLs"}`, {
+                    headers: response_header,
+                });
+            }
+        }
 
         // Validate URL
         if (!await checkURL(req["url"])) {
@@ -264,8 +802,6 @@ async function handleRequest(request) {
         });
     }
 
-    const requestURL = new URL(request.url);
-    const path = requestURL.pathname.split("/")[1];
     const params = requestURL.search;
 
     console.log(path);

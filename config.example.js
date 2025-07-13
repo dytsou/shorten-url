@@ -52,7 +52,40 @@ const config = {
     random_chars: 'ABCDEFGHJKMNPQRSTWXYZabcdefhijkmnprstwxyz2345678',
 
     // Reserved slugs that cannot be used as custom URLs
-    reserved_slugs: ['api', 'admin', 'www', 'mail', 'ftp', 'localhost', 'password', 'help', 'support', 'contact', 'about']
+    reserved_slugs: ['api', 'admin', 'www', 'mail', 'ftp', 'localhost', 'password', 'help', 'support', 'contact', 'about', 'auth']
+  },
+
+  // Authentication Configuration
+  auth: {
+    // Enable authentication features
+    enabled: true,
+
+    // Require authentication to CREATE URLs (not to access them)
+    require_auth_to_create: true,
+
+    // Use fingerprint as primary authentication method
+    fingerprint_primary: true,
+
+    // Allow password fallback if fingerprint fails
+    password_fallback: true,
+
+    // Rate limiting for authentication attempts
+    rate_limit_attempts: 5,
+
+    // Rate limiting window in milliseconds (5 minutes)
+    rate_limit_window: 300000,
+
+    // Session timeout in milliseconds (30 minutes)
+    session_timeout: 1800000,
+
+    // PBKDF2 iterations for password hashing
+    pbkdf2_iterations: 100000,
+
+    // Salt length for password hashing
+    salt_length: 32,
+
+    // Admin key for credential setup (CHANGE THIS IN PRODUCTION!)
+    admin_key: "admin-secret-key-change-this"
   },
 
   // KV Storage Configuration (Cloudflare Workers)

@@ -1,292 +1,360 @@
-# URL Shortener
+# URL Shortener with Authentication
 
-A modern, fast URL shortener built with Cloudflare Workers and a responsive web interface. This project allows you to create short URLs with optional custom slugs, featuring a clean UI and robust backend.
+A modern URL shortener service built with Cloudflare Workers, featuring authentication required for URL creation with fingerprint-first authentication and password fallback.
 
 ## Features
 
-- **URL Shortening**: Convert long URLs into short, shareable links
-- **Custom Slugs**: Create personalized short URLs (optional)
-- **Responsive Design**: Works seamlessly on desktop and mobile devices
-- **Fast Performance**: Built on Cloudflare Workers for global edge deployment
-- **Security Features**: URL validation, rate limiting, and optional Safe Browsing integration
-- **Modern Copy Function**: One-click copying with fallbacks for all browsers
-- **Analytics Ready**: Optional click tracking and analytics integration
+### Core Features
+- ✅ **URL Shortening**: Convert long URLs into short, shareable links
+- ✅ **Custom Slugs**: Create personalized short URLs with custom text
+- ✅ **Unique Links**: Same URL generates same short link (configurable)
+- ✅ **Safe Browsing**: Google Safe Browsing API integration for malicious URL detection
+- ✅ **Fast Access**: No authentication required for accessing shortened URLs
+
+### 🔐 Authentication Features
+- ✅ **Protected URL Creation**: Authenticate before creating short URLs
+- ✅ **Fingerprint-First**: Primary authentication using biometric methods (WebAuthn)
+- ✅ **Password Fallback**: Secondary authentication with secure password system
+- ✅ **Admin Management**: Dedicated admin endpoint for credential setup
+- ✅ **Session Management**: Temporary tokens for authenticated sessions
+- ✅ **Rate Limiting**: Protection against brute force attacks
+
+### Technical Features
+- ✅ **Serverless Architecture**: Runs on Cloudflare Workers edge network
+- ✅ **Fast Performance**: Global CDN with minimal latency
+- ✅ **Scalable Storage**: Cloudflare KV for unlimited URL storage
+- ✅ **Modern UI**: Responsive design with mobile support and popup authentication
+- ✅ **Enhanced UX**: Clean interface with authentication only when needed
+- ✅ **CORS Support**: Cross-origin requests enabled
+
+## How Authentication Works
+
+### Authentication for URL Creation
+1. **Setup**: Administrator configures fingerprint and/or password credentials via `/admin/setup`
+2. **User Access**: Users visit the clean URL shortener interface (no authentication forms visible)
+3. **Action Trigger**: Users click "Shorten URL" or "Shorten URL and Visit" buttons
+4. **Authentication Popup**: If not authenticated, a popup modal appears requesting authentication
+5. **Primary Method**: System attempts fingerprint authentication first
+6. **Fallback**: If fingerprint fails, users can authenticate with password within the popup
+7. **Session**: Successful authentication creates a temporary session (30 minutes)
+8. **Auto-Proceed**: Popup closes automatically and URL shortening continues
+9. **Clean Experience**: Main interface remains uncluttered, authentication only when needed
+10. **No Auth for Access**: Shortened URLs can be accessed by anyone without authentication
+
+### Authentication Flow
+```
+User visits site → Clicks "Shorten URL" → Authentication popup → Fingerprint (primary) → Password (fallback) → Session created → Popup closes → URL shortening proceeds
+```
+
+### Popup Authentication UI
+- **Clean Interface**: Main page shows only URL shortening form
+- **On-Demand Authentication**: Popup appears when authentication is needed
+- **Smooth Animations**: Fade-in/fade-out transitions with backdrop
+- **Responsive Design**: Works on desktop, tablet, and mobile devices
+- **Accessibility**: Keyboard navigation, escape key support, focus management
+- **Auto-Close**: Popup closes automatically after successful authentication
+- **Session Persistence**: Remembers authentication for 30 minutes
+
+### Admin Setup
+- Access `/admin/setup` endpoint
+- Configure fingerprint credentials using WebAuthn
+- Set optional password fallback
+- Secure credential storage in KV database
 
 ## Quick Start
 
-### Prerequisites
+### 1. Deploy to Cloudflare Workers
 
-- A Cloudflare account with Workers enabled
-- GitHub account for hosting the frontend (or any static hosting)
-- Basic knowledge of Git and command line
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/yourusername/shorten-url.git
+   cd shorten-url
+   ```
 
-### 1. Clone the Repository
+2. **Configure the worker**
+   - Copy `config.example.js` to `config.js`
+   - Update the configuration values:
+   ```javascript
+   const config = {
+     frontend: {
+       url: "https://yourusername.github.io/your-repo-name/"
+     },
+     auth: {
+       enabled: true,
+       require_auth_to_create: true,
+       fingerprint_primary: true,
+       password_fallback: true,
+       admin_key: "your-secure-admin-key-here"
+     }
+   };
+   ```
 
-```bash
-git clone https://github.com/dytsou/shorten-url.git
-cd shorten-url
-```
+3. **Deploy with Wrangler**
+   ```bash
+   npm install -g @cloudflare/wrangler
+   wrangler login
+   wrangler publish
+   ```
 
-### 2. Setup Configuration
+4. **Set up KV Storage**
+   ```bash
+   wrangler kv:namespace create "LINKS"
+   wrangler kv:namespace create "LINKS" --preview
+   ```
 
-```bash
-# Copy the example configuration
-cp config.example.js config.js
+### 2. Configure GitHub Pages
 
-# Edit the configuration file
-vim config.js
-```
+1. Enable GitHub Pages in your repository settings
+2. Set the source to the main branch
+3. Your frontend will be available at `https://yourusername.github.io/your-repo-name/`
 
-Update the `config.js` file with your settings:
+### 3. Admin Setup
 
-```javascript
-const config = {
-    frontend: {
-        // IMPORTANT: Update this to your GitHub Pages URL or custom domain
-        url: "https://yourusername.github.io/shorten-url/",
-    },
-    // ... other settings
-};
-```
+1. Visit `https://your-worker-domain.workers.dev/admin/setup`
+2. Enter your admin key (configured in `config.js`)
+3. Set up fingerprint authentication using your device's biometric features
+4. Optionally configure a password fallback
+5. Save the configuration
 
-### 3. Deploy Frontend
+## Configuration
 
-#### Option A: GitHub Pages (Recommended)
-
-1. Push your code to GitHub
-2. Go to your repository settings
-3. Enable GitHub Pages for the main branch
-4. Your frontend will be available at `https://yourusername.github.io/shorten-url/`
-
-#### Option B: Custom Domain
-
-1. Upload `index.html` to your web hosting
-2. Update the `frontend.url` in `config.js` to match your domain
-
-### 4. Setup Cloudflare Workers
-
-#### Install Wrangler CLI
-
-```bash
-npm install -g wrangler
-```
-
-#### Configure Wrangler
-
-```bash
-# Login to Cloudflare
-wrangler auth login
-
-# Create a new KV namespace for storing URLs
-wrangler kv:namespace create "LINKS"
-```
-
-#### Create wrangler.toml
-
-Create a `wrangler.toml` file in your project root:
-
-```toml
-name = "url-shortener"
-main = "worker.js"
-compatibility_date = "2024-01-01"
-
-[[kv_namespaces]]
-binding = "LINKS"
-id = "your-kv-namespace-id-here"
-```
-
-Replace `your-kv-namespace-id-here` with the ID from the KV namespace creation command.
-
-#### Deploy the Worker
-
-```bash
-wrangler deploy
-```
-
-### 5. Update Configuration
-
-After deploying, update your `config.js` with the worker URL:
+### Authentication Settings
 
 ```javascript
-const config = {
-    frontend: {
-        url: "https://yourusername.github.io/shorten-url/",
-    },
-    // ... other settings
-};
-```
-
-## ⚙️ Configuration Options
-
-### Frontend Configuration
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `frontend.url` | URL where your frontend is hosted | Required |
-| `frontend.displayDomain` | Domain shown in UI (null = auto-detect) | `null` |
-| `frontend.theme` | UI theme selection | `""` |
-
-### Worker Configuration
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `worker.no_ref` | Hide HTTP referrer header | `"off"` |
-| `worker.cors` | Enable CORS for API requests | `"on"` |
-| `worker.unique_link` | Same URL = same short link | `true` |
-| `worker.custom_link` | Allow custom slugs | `true` |
-| `worker.safe_browsing_api_key` | Google Safe Browsing API key | `""` |
-
-### Security Configuration
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `security.rate_limit` | Requests per minute per IP | `10` |
-| `security.validate_urls` | Enable URL validation | `true` |
-| `security.blocked_domains` | List of blocked domains | `[]` |
-
-## 🔧 Advanced Setup
-
-### Custom Domain
-
-1. Add a custom domain in Cloudflare Workers dashboard
-2. Update your DNS records to point to Cloudflare
-3. Update the worker URL in your configuration
-
-### Google Safe Browsing
-
-1. Get an API key from [Google Cloud Console](https://developers.google.com/safe-browsing/v4/get-started)
-2. Add the key to your `config.js`:
-
-```javascript
-worker: {
-    safe_browsing_api_key: "your-api-key-here",
+auth: {
+  enabled: true,                      // Enable authentication system
+  require_auth_to_create: true,       // Require auth to create URLs
+  fingerprint_primary: true,          // Use fingerprint as primary method
+  password_fallback: true,            // Allow password fallback
+  rate_limit_attempts: 5,            // Max auth attempts per window
+  rate_limit_window: 300000,         // Rate limit window (5 minutes)
+  session_timeout: 1800000,          // Session timeout (30 minutes)
+  pbkdf2_iterations: 100000,         // Password hashing iterations
+  salt_length: 32,                   // Salt length for password hashing
+  admin_key: "change-this-key"       // Admin key for setup (CHANGE THIS!)
 }
 ```
 
-### Analytics Integration
-
-Configure analytics in your `config.js`:
+### Security Settings
 
 ```javascript
-analytics: {
-    enable_tracking: true,
-    ga_tracking_id: "G-XXXXXXXXXX", // Google Analytics 4
-    analytics_endpoint: "https://your-analytics-endpoint.com"
+security: {
+  rate_limit: 10,                    // Requests per minute per IP
+  validate_urls: true,               // Enable URL validation
+  block_suspicious_domains: true,    // Block suspicious domains
+  blocked_domains: [                 // List of blocked domains
+    "malicious-site.com"
+  ]
 }
 ```
 
-## 📖 API Documentation
+## API Reference
 
-### Shorten URL
+### Authentication Endpoints
 
-**POST** `/`
+#### Admin Setup
+**Endpoint**: `GET /admin/setup`
+- Returns admin setup page for configuring credentials
 
+**Endpoint**: `POST /admin/setup`
 ```json
 {
-    "url": "https://example.com/very-long-url",
-    "custom_slug": "my-link" // optional
+  "admin_key": "your-admin-key",
+  "password": "optional-password",
+  "fingerprint": {
+    "credentialId": "...",
+    "publicKey": "..."
+  }
 }
 ```
 
-**Response:**
+#### User Authentication
+**Endpoint**: `POST /auth`
 
+For fingerprint authentication:
 ```json
 {
-    "status": 200,
-    "key": "/abc123"
+  "type": "fingerprint",
+  "credential": {
+    "id": "credential-id",
+    "response": "webauthn-response"
+  }
 }
 ```
 
-### Access Short URL
-
-**GET** `/{key}`
-
-Redirects to the original URL.
-
-## 🛠️ Development
-
-### Local Development
-
-```bash
-# Start local development server
-wrangler dev
-
-# Test with curl
-curl -X POST http://localhost:8787 \
-  -H "Content-Type: application/json" \
-  -d '{"url": "https://example.com"}'
+For password authentication:
+```json
+{
+  "type": "password",
+  "password": "user-password"
+}
 ```
 
-### File Structure
-
-```
-shorten-url/
-├── index.html          # Frontend interface
-├── worker.js           # Cloudflare Worker code
-├── config.js           # Configuration (not in git)
-├── config.example.js   # Configuration template
-├── .gitignore          # Git ignore rules
-├── README.md           # This file
-└── wrangler.toml       # Wrangler configuration
+**Response**:
+```json
+{
+  "success": true,
+  "sessionToken": "session-token",
+  "message": "Authentication successful"
+}
 ```
 
-## Security Considerations
+### URL Creation
 
-- Keep your `config.js` file private (it's in `.gitignore`)
-- Use environment variables for sensitive data in production
-- Enable rate limiting to prevent abuse
-- Consider enabling Google Safe Browsing for malicious URL detection
-- Regularly monitor your KV storage usage
+**Endpoint**: `POST /`
+
+**Request Body**:
+```json
+{
+  "url": "https://example.com/very-long-url",
+  "sessionToken": "required-session-token",
+  "custom_slug": "my-link"  // Optional
+}
+```
+
+**Response**:
+```json
+{
+  "status": 200,
+  "key": "/abc123"
+}
+```
+
+### URL Access
+
+**Endpoint**: `GET /{slug}`
+- No authentication required
+- Direct redirect to original URL
+
+## Data Model
+
+### Credentials Storage
+```json
+{
+  "fingerprint": {
+    "credentialId": "webauthn-credential-id",
+    "publicKey": "webauthn-public-key"
+  },
+  "password": {
+    "hash": "pbkdf2-hashed-password",
+    "salt": "random-salt-string"
+  },
+  "created": "2023-12-01T12:00:00Z"
+}
+```
+
+### Session Storage
+```json
+{
+  "expires": 1701436800000,
+  "created": 1701435000000
+}
+```
+
+### URL Storage
+- **Key**: Short slug (e.g., "abc123")
+- **Value**: Original URL (e.g., "https://example.com")
+
+## Security Features
+
+### Authentication Security
+- **PBKDF2 Hashing**: 100,000 iterations with SHA-256
+- **Salt Generation**: Secure random 32-byte salt per password
+- **Rate Limiting**: 5 attempts per 5-minute window
+- **Session Management**: Temporary tokens with 30-minute expiration
+- **WebAuthn Standard**: Industry-standard biometric authentication
+
+### General Security
+- **HTTPS Only**: All authentication requires secure connections
+- **CORS Protection**: Configurable cross-origin policies
+- **Input Validation**: Comprehensive validation of all inputs
+- **Safe Browsing**: Google Safe Browsing API integration
+- **Admin Key Protection**: Secure admin endpoint access
+
+## Browser Support
+
+### Authentication Features
+- **Password Protection**: All modern browsers
+- **Fingerprint Authentication**: Requires WebAuthn support
+  - Chrome 67+
+  - Firefox 60+
+  - Safari 14+
+  - Edge 79+
+
+### Supported Biometric Methods
+- Fingerprint scanners
+- Face ID / Windows Hello
+- Hardware security keys
+- Platform authenticators
+
+## Usage Workflow
+
+1. **First-time Setup**:
+   - Admin visits `/admin/setup`
+   - Configures fingerprint and/or password credentials
+   - Credentials stored securely in KV database
+
+2. **User Creates URLs**:
+   - User visits URL shortener interface
+   - Authenticates using fingerprint (preferred) or password
+   - Creates shortened URLs during authenticated session
+   - Session expires after 30 minutes of inactivity
+
+3. **Accessing URLs**:
+   - Anyone can access shortened URLs without authentication
+   - Direct redirect to original destination
+   - Optional safety checking via Google Safe Browsing
+
+## Deployment Checklist
+
+- [ ] Update `config.js` with your settings
+- [ ] Change the default admin key to something secure
+- [ ] Deploy worker to Cloudflare Workers
+- [ ] Configure GitHub Pages or custom domain
+- [ ] Set up KV storage namespace
+- [ ] Complete admin setup at `/admin/setup`
+- [ ] Test fingerprint authentication
+- [ ] Test password fallback authentication
+- [ ] Verify URL creation and access flows
 
 ## Troubleshooting
 
 ### Common Issues
 
-**"Failed to copy" error:**
-- The app uses modern clipboard API with fallbacks
-- Ensure you're using HTTPS (required for clipboard access)
+1. **Cannot access admin setup**
+   - Verify admin key in configuration
+   - Check that worker is deployed correctly
+   - Ensure KV namespace is configured
 
-**Worker deployment fails:**
-- Check your `wrangler.toml` configuration
-- Ensure KV namespace ID is correct
-- Verify you're logged into the correct Cloudflare account
+2. **Fingerprint authentication fails**
+   - Verify browser WebAuthn support
+   - Check that site is served over HTTPS
+   - Ensure biometric authentication is set up on device
 
-**Custom slugs not working:**
-- Check that `custom_link` is enabled in config
-- Verify slug meets validation requirements (alphanumeric, hyphens, underscores only)
+3. **Password authentication not working**
+   - Verify password was set during admin setup
+   - Check rate limiting hasn't been triggered
+   - Confirm admin credentials were saved properly
 
-**Frontend not loading:**
-- Update `frontend.url` in your config to match your hosting URL
-- Ensure CORS is enabled in worker configuration
-
-## License
-
-This project is based on [Url-Shorten-Worker](https://github.com/xyTom/Url-Shorten-Worker) by xyTom, licensed under the MIT License.
+4. **URLs not creating**
+   - Verify user is authenticated (green status indicator)
+   - Check session hasn't expired (30-minute timeout)
+   - Confirm worker has KV write permissions
 
 ## Contributing
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create a feature branch
+3. Make your changes
+4. Add tests for new features
+5. Submit a pull request
 
-## Support
+## License
 
-If you encounter any issues or have questions:
+MIT License - see LICENSE file for details.
 
-1. Check the [troubleshooting section](#-troubleshooting)
-2. Search existing issues on GitHub
-3. Create a new issue with detailed information
+## Acknowledgments
 
-## Deployment Checklist
-
-- [ ] Updated `config.js` with your settings
-- [ ] Deployed frontend to GitHub Pages or custom hosting
-- [ ] Created Cloudflare KV namespace
-- [ ] Configured `wrangler.toml` with correct KV namespace ID
-- [ ] Deployed worker using `wrangler deploy`
-- [ ] Tested URL shortening functionality
-- [ ] Verified copy-to-clipboard feature works
-- [ ] (Optional) Configured custom domain
-- [ ] (Optional) Added Google Safe Browsing API key
+- Based on [Url-Shorten-Worker](https://github.com/xyTom/Url-Shorten-Worker) by xyTom
+- Uses Cloudflare Workers platform
+- WebAuthn implementation follows W3C standards
