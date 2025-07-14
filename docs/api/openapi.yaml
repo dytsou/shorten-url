@@ -1,15 +1,14 @@
 openapi: 3.0.3
 info:
   title: Shorten URL Service
-  version: "1.0.0"
+  version: 1.0.0
   description: |
     A modern, fast URL shortener built with Cloudflare Workers and a responsive web interface.
-    - Anyone can create short URLs (no authentication required).
-    - Custom slugs are supported.
-    - The homepage is served at `/home`.
-    - API is available at `/` (POST) for shortening URLs.
-    - Short URL access is via `/{key}` (GET).
-    - Custom error pages for 404, security warnings, and redirects.
+    - Custom slugs are supported
+    - The homepage is served at /home
+    - API is available at / (POST) for shortening URLs
+    - Short URL access is via /{key} (GET)
+    - Custom error pages for 404, security warnings, and redirects
 
 servers:
   - url: https://url.tsou.me
@@ -31,13 +30,17 @@ paths:
                 url:
                   type: string
                   format: uri
-                  description: The long URL to shorten.
+                  description: The URL to shorten
+                  example: https://www.example.com/very/long/url/path
                 custom_slug:
                   type: string
-                  description: Optional custom slug for the short URL.
+                  pattern: '^[a-zA-Z0-9\-_]+$'
+                  maxLength: 50
+                  description: Optional custom slug for the short URL
+                  example: my-custom-link
       responses:
         '200':
-          description: Short URL created successfully
+          description: URL successfully shortened
           content:
             application/json:
               schema:
@@ -48,9 +51,10 @@ paths:
                     example: 200
                   key:
                     type: string
+                    description: The path to the shortened URL
                     example: /abc123
         '400':
-          description: Invalid input or custom slug already exists
+          description: Bad request - Invalid URL or custom slug
           content:
             application/json:
               schema:
@@ -61,9 +65,17 @@ paths:
                     example: 400
                   message:
                     type: string
-                    example: Invalid URL format
+                    examples:
+                      invalid_url:
+                        value: Invalid URL format
+                      invalid_slug:
+                        value: Invalid custom slug format
+                      slug_exists:
+                        value: Custom slug already exists
+                      custom_disabled:
+                        value: Custom URLs are disabled
         '500':
-          description: Server error or KV write limitation
+          description: Internal server error
           content:
             application/json:
               schema:
@@ -74,7 +86,7 @@ paths:
                     example: 500
                   message:
                     type: string
-                    example: Error: Reach the KV write limitation
+                    example: Error - Reach the KV write limitation
 
   /{key}:
     get:
@@ -86,22 +98,37 @@ paths:
           required: true
           schema:
             type: string
-          description: The short URL key or custom slug.
+          description: The short URL key
+          example: abc123
       responses:
         '302':
           description: Redirect to the original URL
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+              description: The original URL
         '404':
-          description: Short URL not found (custom 404 page)
-        '403':
-          description: Blocked or unsafe URL (custom warning page)
+          description: Short URL not found
+          content:
+            text/html:
+              schema:
+                type: string
+              example: Custom 404 page with modern design
 
   /home:
     get:
-      summary: Homepage
-      description: Serves the main frontend interface for the URL shortener.
+      summary: Get the homepage
+      description: Serves the URL shortener frontend interface.
       responses:
         '200':
-          description: The HTML homepage
+          description: Homepage HTML
+          content:
+            text/html:
+              schema:
+                type: string
+              example: URL shortener frontend with form interface
 
 components:
   schemas:
@@ -113,8 +140,13 @@ components:
         url:
           type: string
           format: uri
+          description: The URL to shorten
         custom_slug:
           type: string
+          pattern: '^[a-zA-Z0-9\-_]+$'
+          maxLength: 50
+          description: Optional custom slug
+    
     ShortenResponse:
       type: object
       properties:
@@ -122,6 +154,7 @@ components:
           type: integer
         key:
           type: string
+    
     ErrorResponse:
       type: object
       properties:
