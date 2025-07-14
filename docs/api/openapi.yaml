@@ -1,0 +1,153 @@
+openapi: 3.0.3
+info:
+  title: Shorten URL Service
+  version: 1.0.0
+  description: |
+    A modern, fast URL shortener built with Cloudflare Workers and a responsive web interface.
+    - Custom slugs are supported
+    - The homepage is served at /home
+    - API is available at / (POST) for shortening URLs
+    - Short URL access is via /{key} (GET)
+    - Custom error pages for 404, security warnings, and redirects
+
+servers:
+  - url: https://url.tsou.me
+
+paths:
+  /:
+    post:
+      summary: Shorten a URL
+      description: Create a new shortened URL, optionally with a custom slug.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - url
+              properties:
+                url:
+                  type: string
+                  format: uri
+                  description: The URL to shorten
+                  example: https://www.example.com/very/long/url/path
+                custom_slug:
+                  type: string
+                  pattern: '^[a-zA-Z0-9\-_]+$'
+                  maxLength: 50
+                  description: Optional custom slug for the short URL
+                  example: my-custom-link
+      responses:
+        '200':
+          description: URL successfully shortened
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: integer
+                    example: 200
+                  key:
+                    type: string
+                    example: /abc123
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: integer
+                    example: 400
+                  message:
+                    type: string
+                    example: Invalid URL format
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: integer
+                    example: 500
+                  message:
+                    type: string
+                    example: Server error
+
+  /{key}:
+    get:
+      summary: Access shortened URL
+      description: Redirect to the original URL
+      parameters:
+        - in: path
+          name: key
+          required: true
+          schema:
+            type: string
+          description: The short URL key
+          example: abc123
+      responses:
+        '302':
+          description: Redirect to original URL
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+        '404':
+          description: Short URL not found
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /home:
+    get:
+      summary: Get homepage
+      description: Serves the URL shortener frontend
+      responses:
+        '200':
+          description: Homepage HTML
+          content:
+            text/html:
+              schema:
+                type: string
+              example: URL shortener frontend with form interface
+
+components:
+  schemas:
+    ShortenRequest:
+      type: object
+      required:
+        - url
+      properties:
+        url:
+          type: string
+          format: uri
+          description: The URL to shorten
+        custom_slug:
+          type: string
+          pattern: '^[a-zA-Z0-9\-_]+$'
+          maxLength: 50
+          description: Optional custom slug
+    
+    ShortenResponse:
+      type: object
+      properties:
+        status:
+          type: integer
+        key:
+          type: string
+    
+    ErrorResponse:
+      type: object
+      properties:
+        status:
+          type: integer
+        message:
+          type: string
