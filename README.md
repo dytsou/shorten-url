@@ -1,6 +1,6 @@
 # URL Shortener
 
-A modern, fast URL shortener built with Cloudflare Workers and a responsive web interface. This project allows anyone to create short URLs with optional custom slugs, featuring a clean UI and robust backend.
+A modern, fast URL shortener built with Cloudflare Workers and a responsive web interface. This project allows anyone to create short URLs with optional custom slugs, featuring a clean UI and robust backend with comprehensive API documentation.
 
 ## Features
 
@@ -12,6 +12,7 @@ A modern, fast URL shortener built with Cloudflare Workers and a responsive web 
 - **Security Features**: URL validation, rate limiting, and optional Safe Browsing integration
 - **Modern Copy Function**: One-click copying with fallbacks for all browsers
 - **Custom Error Pages**: Beautiful 404, security warning, and redirect pages
+- **API Documentation**: Interactive Swagger UI with OpenAPI 3.0.3 specification
 - **Analytics Ready**: Optional click tracking and analytics integration
 
 ## Quick Start
@@ -33,13 +34,13 @@ cd shorten-url
 
 ```bash
 # Copy the example configuration
-cp config.example.js config.js
+cp config/config.example.js config/config.js
 
 # Edit the configuration file
-vim config.js
+vim config/config.js
 ```
 
-Update the `config.js` file with your settings:
+Update the `config/config.js` file with your settings:
 
 ```javascript
 const config = {
@@ -62,8 +63,8 @@ const config = {
 
 #### Option B: Custom Domain
 
-1. Upload `index.html` to your web hosting
-2. Update the `frontend.url` in `config.js` to match your domain
+1. Upload the `docs/` directory to your web hosting
+2. Update the `frontend.url` in `config/config.js` to match your domain
 
 ### 4. Setup Cloudflare Workers
 
@@ -89,7 +90,7 @@ Create a `wrangler.toml` file in your project root:
 
 ```toml
 name = "url-shortener"
-main = "worker.js"
+main = "src/worker.js"
 compatibility_date = "2024-01-01"
 
 [[kv_namespaces]]
@@ -107,7 +108,7 @@ wrangler deploy
 
 ### 5. Update Configuration
 
-After deploying, update your `config.js` with the worker URL:
+After deploying, update your `config/config.js` with the worker URL:
 
 ```javascript
 const config = {
@@ -198,6 +199,15 @@ All pages feature responsive design with glassmorphism effects matching your mai
 
 ## 📖 API Documentation
 
+The project includes comprehensive API documentation available at `/api` endpoint with interactive Swagger UI.
+
+### OpenAPI Specification
+
+- **Format**: OpenAPI 3.0.3
+- **Location**: [docs/api/openapi.yaml](docs/api/openapi.yaml)
+- **Interactive UI**: Available at `/api` endpoint on your deployed worker
+- **Offline Access**: [docs/api/index.html](docs/api/index.html) for local viewing
+
 ### Shorten URL
 
 **POST** `/`
@@ -233,6 +243,12 @@ All pages feature responsive design with glassmorphism effects matching your mai
 
 Redirects to the original URL or shows appropriate error page.
 
+### Additional Endpoints
+
+- **GET** `/home` - Homepage with URL shortening interface
+- **GET** `/api` - Interactive API documentation (Swagger UI)
+- **GET** `/about` - Project information and details
+
 ## 🛠️ Development
 
 ### Local Development
@@ -251,13 +267,23 @@ curl -X POST http://localhost:8000 \
 
 ```
 shorten-url/
-├── index.html          # Frontend interface
-├── worker.js           # Cloudflare Worker code
-├── config.js           # Configuration (not in git)
-├── config.example.js   # Configuration template
-├── .gitignore          # Git ignore rules
-├── README.md           # This file
-└── wrangler.toml       # Wrangler configuration
+├── src/
+│   ├── worker.js           # Production Cloudflare Worker
+│   ├── worker.dev.js       # Development Cloudflare Worker
+│   └── worker.example.js   # Worker template
+├── docs/
+│   ├── index.html          # Homepage interface
+│   └── api/
+│       ├── index.html      # Swagger UI for API docs
+│       └── openapi.yaml    # OpenAPI 3.0.3 specification
+├── config/
+│   ├── config.js           # Configuration (not in git)
+│   └── config.example.js   # Configuration template
+├── .cursor/                # Cursor IDE rules and workflow
+├── .github/                # GitHub workflows and templates
+├── .gitignore             # Git ignore rules
+├── README.md              # This file
+└── wrangler.toml          # Wrangler configuration
 ```
 
 ## Security Considerations
