@@ -1,15 +1,17 @@
 # URL Shortener
 
-A modern, fast URL shortener built with Cloudflare Workers and a responsive web interface. This project allows you to create short URLs with optional custom slugs, featuring a clean UI and robust backend.
+A modern, fast URL shortener built with Cloudflare Workers and a responsive web interface. This project allows anyone to create short URLs with optional custom slugs, featuring a clean UI and robust backend.
 
 ## Features
 
 - **URL Shortening**: Convert long URLs into short, shareable links
 - **Custom Slugs**: Create personalized short URLs (optional)
+- **Open Access**: No authentication required - anyone can create short URLs
 - **Responsive Design**: Works seamlessly on desktop and mobile devices
 - **Fast Performance**: Built on Cloudflare Workers for global edge deployment
 - **Security Features**: URL validation, rate limiting, and optional Safe Browsing integration
 - **Modern Copy Function**: One-click copying with fallbacks for all browsers
+- **Custom Error Pages**: Beautiful 404, security warning, and redirect pages
 - **Analytics Ready**: Optional click tracking and analytics integration
 
 ## Quick Start
@@ -135,6 +137,9 @@ const config = {
 | `worker.unique_link` | Same URL = same short link | `true` |
 | `worker.custom_link` | Allow custom slugs | `true` |
 | `worker.safe_browsing_api_key` | Google Safe Browsing API key | `""` |
+| `worker.min_random_key_length` | Minimum length for generated keys | `6` |
+| `worker.max_custom_slug_length` | Maximum length for custom slugs | `50` |
+| `worker.reserved_slugs` | List of reserved slugs | See config |
 
 ### Security Configuration
 
@@ -143,6 +148,12 @@ const config = {
 | `security.rate_limit` | Requests per minute per IP | `10` |
 | `security.validate_urls` | Enable URL validation | `true` |
 | `security.blocked_domains` | List of blocked domains | `[]` |
+
+### Storage Configuration
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `storage.binding_name` | KV namespace binding name | `"LINKS"` |
 
 ## 🔧 Advanced Setup
 
@@ -175,6 +186,16 @@ analytics: {
 }
 ```
 
+### Custom Error Pages
+
+The system includes built-in custom pages:
+
+- **404 Page**: Modern gradient design when short URLs don't exist
+- **Security Warning**: Professional warning for unsafe URLs (when Safe Browsing is enabled)
+- **Redirect Page**: Loading page with spinner for no-referrer redirects
+
+All pages feature responsive design with glassmorphism effects matching your main interface.
+
 ## 📖 API Documentation
 
 ### Shorten URL
@@ -197,11 +218,20 @@ analytics: {
 }
 ```
 
+**Error Response:**
+
+```json
+{
+    "status": 400,
+    "message": "Invalid URL format"
+}
+```
+
 ### Access Short URL
 
 **GET** `/{key}`
 
-Redirects to the original URL.
+Redirects to the original URL or shows appropriate error page.
 
 ## 🛠️ Development
 
@@ -212,7 +242,7 @@ Redirects to the original URL.
 wrangler dev
 
 # Test with curl
-curl -X POST http://localhost:8787 \
+curl -X POST http://localhost:8000 \
   -H "Content-Type: application/json" \
   -d '{"url": "https://example.com"}'
 ```
@@ -237,6 +267,7 @@ shorten-url/
 - Enable rate limiting to prevent abuse
 - Consider enabling Google Safe Browsing for malicious URL detection
 - Regularly monitor your KV storage usage
+- Be aware this is an open system - anyone can create short URLs
 
 ## Troubleshooting
 
@@ -254,10 +285,15 @@ shorten-url/
 **Custom slugs not working:**
 - Check that `custom_link` is enabled in config
 - Verify slug meets validation requirements (alphanumeric, hyphens, underscores only)
+- Ensure slug is not in the reserved slugs list
 
 **Frontend not loading:**
 - Update `frontend.url` in your config to match your hosting URL
 - Ensure CORS is enabled in worker configuration
+
+**Rate limiting issues:**
+- Adjust `security.rate_limit` in your configuration
+- Consider implementing IP allowlisting for trusted sources
 
 ## License
 
@@ -288,5 +324,6 @@ If you encounter any issues or have questions:
 - [ ] Deployed worker using `wrangler deploy`
 - [ ] Tested URL shortening functionality
 - [ ] Verified copy-to-clipboard feature works
+- [ ] Tested custom error pages (404, security warnings)
 - [ ] (Optional) Configured custom domain
 - [ ] (Optional) Added Google Safe Browsing API key
