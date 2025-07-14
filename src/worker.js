@@ -519,15 +519,24 @@ async function handleRequest(request) {
     const path = requestURL.pathname.split("/")[1];
     const params = requestURL.search;
 
-    console.log(path);
-
-    if (!path) {
+    // Serve homepage only at /home
+    if (path === 'home') {
         const html = await fetch(config.frontend.url);
-
         return new Response(await html.text(), {
             headers: {
                 "content-type": "text/html;charset=UTF-8",
             },
+        });
+    }
+
+    console.log(path);
+
+    if (!path) {
+        return new Response(html404, {
+            headers: {
+                "content-type": "text/html;charset=UTF-8",
+            },
+            status: 404
         });
     }
 
