@@ -245,9 +245,7 @@ Redirects to the original URL or shows appropriate error page.
 
 ### Additional Endpoints
 
-- **GET** `/home` - Homepage with URL shortening interface
 - **GET** `/api` - Interactive API documentation (Swagger UI)
-- **GET** `/about` - Project information and details
 
 ## 🛠️ Development
 
