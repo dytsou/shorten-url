@@ -321,10 +321,6 @@ shorten-url/
 - Adjust `security.rate_limit` in your configuration
 - Consider implementing IP allowlisting for trusted sources
 
-## License
-
-This project is based on [Url-Shorten-Worker](https://github.com/xyTom/Url-Shorten-Worker) by xyTom, licensed under the MIT License.
-
 ## Contributing
 
 1. Fork the repository
