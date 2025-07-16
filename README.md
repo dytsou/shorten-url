@@ -11,7 +11,7 @@ A modern, fast URL shortener built with Cloudflare Workers and a responsive web 
 - **Fast Performance**: Built on Cloudflare Workers for global edge deployment
 - **Security Features**: URL validation, rate limiting, and optional Safe Browsing integration
 - **Modern Copy Function**: One-click copying with fallbacks for all browsers
-- **Custom Error Pages**: Beautiful 404, security warning, and redirect pages
+- **Custom Error Pages**: Beautiful 404, security warning, and redirect pages (fully customizable via your GitHub Pages)
 - **API Documentation**: Interactive Swagger UI with OpenAPI 3.0.3 specification
 - **Analytics Ready**: Optional click tracking and analytics integration
 
@@ -189,11 +189,13 @@ analytics: {
 
 ### Custom Error Pages
 
-The system includes built-in custom pages:
+The system fetches error and redirect pages from your GitHub Pages repository, so you can fully customize their content and design:
 
-- **404 Page**: Modern gradient design when short URLs don't exist
-- **Security Warning**: Professional warning for unsafe URLs (when Safe Browsing is enabled)
-- **Redirect Page**: Loading page with spinner for no-referrer redirects
+- **404 Page**: <code>https://dytsou.github.io/404.html</code>
+- **Security Warning**: <code>https://dytsou.github.io/safe-browsing-warning.html</code>
+- **No-Referrer Redirect**: <code>https://dytsou.github.io/no-ref-page.html</code>
+
+You can edit these HTML files in your GitHub Pages repo to change the look, text, or behavior at any time. The worker will always serve the latest version from your site.
 
 All pages feature responsive design with glassmorphism effects matching your main interface.
 
