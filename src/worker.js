@@ -1,18 +1,3 @@
-/*
- * URL Shortener Worker
- * 
- * Based on Url-Shorten-Worker by xyTom
- * Original: https://github.com/xyTom/Url-Shorten-Worker
- * Copyright (c) 2020 xyTom
- * Licensed under MIT License
- * 
- * Modified to include custom URL functionality and proper license compliance
- */
-
-// Import configuration - you'll need to include config.js in your worker
-// For development, you can copy the config object here
-// For production, consider using environment variables or KV storage for sensitive data
-
 let config;
 
 try {
@@ -41,265 +26,6 @@ try {
         }
     };
 }
-
-const html404 = `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>404 - Page Not Found</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            text-align: center;
-        }
-        .container {
-            max-width: 500px;
-            padding: 40px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 20px;
-            backdrop-filter: blur(10px);
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-        }
-        h1 {
-            font-size: 4em;
-            margin-bottom: 10px;
-            opacity: 0.9;
-        }
-        h2 {
-            font-size: 1.5em;
-            margin-bottom: 20px;
-            opacity: 0.8;
-        }
-        p {
-            font-size: 1.1em;
-            line-height: 1.6;
-            opacity: 0.7;
-            margin-bottom: 30px;
-        }
-        .home-btn {
-            display: inline-block;
-            padding: 12px 24px;
-            background: rgba(255, 255, 255, 0.2);
-            color: white;
-            text-decoration: none;
-            border-radius: 25px;
-            transition: all 0.3s ease;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-        }
-        .home-btn:hover {
-            background: rgba(255, 255, 255, 0.3);
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>404</h1>
-        <h2>Page Not Found</h2>
-        <p>The short URL you're looking for doesn't exist or may have expired.</p>
-        <a href="/" class="home-btn">← Back to Home</a>
-    </div>
-</body>
-</html>`
-
-const safeBrowsingWarning = `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Security Warning</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            text-align: center;
-        }
-        .container {
-            max-width: 600px;
-            padding: 40px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 20px;
-            backdrop-filter: blur(10px);
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-        }
-        .warning-icon {
-            font-size: 4em;
-            margin-bottom: 20px;
-        }
-        h1 {
-            font-size: 2.5em;
-            margin-bottom: 20px;
-        }
-        p {
-            font-size: 1.1em;
-            line-height: 1.6;
-            margin-bottom: 20px;
-            opacity: 0.9;
-        }
-        .url-box {
-            background: rgba(0, 0, 0, 0.2);
-            padding: 15px;
-            border-radius: 10px;
-            margin: 20px 0;
-            word-break: break-all;
-            font-family: monospace;
-        }
-        .btn-group {
-            margin-top: 30px;
-            display: flex;
-            gap: 15px;
-            justify-content: center;
-            flex-wrap: wrap;
-        }
-        .btn {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 25px;
-            text-decoration: none;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            cursor: pointer;
-        }
-        .btn-danger {
-            background: rgba(255, 255, 255, 0.2);
-            color: white;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-        }
-        .btn-danger:hover {
-            background: rgba(255, 255, 255, 0.3);
-            transform: translateY(-2px);
-        }
-        .btn-safe {
-            background: rgba(255, 255, 255, 0.9);
-            color: #333;
-        }
-        .btn-safe:hover {
-            background: white;
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="warning-icon">⚠️</div>
-        <h1>Security Warning</h1>
-        <p>This URL has been flagged by Google Safe Browsing as potentially dangerous.</p>
-        <div class="url-box">{Replace}</div>
-        <p>The destination may contain malware, phishing attempts, or other security threats. Proceed with caution.</p>
-        <div class="btn-group">
-            <a href="/" class="btn btn-safe">← Go Back Home</a>
-            <a href="{Replace}" class="btn btn-danger">Continue Anyway (Risky)</a>
-        </div>
-    </div>
-</body>
-</html>`
-
-const noRefPage = `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Redirecting...</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            text-align: center;
-        }
-        .container {
-            max-width: 500px;
-            padding: 40px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 20px;
-            backdrop-filter: blur(10px);
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-        }
-        .spinner {
-            width: 50px;
-            height: 50px;
-            border: 4px solid rgba(255, 255, 255, 0.3);
-            border-left: 4px solid white;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 30px;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        h1 {
-            font-size: 2em;
-            margin-bottom: 20px;
-        }
-        p {
-            font-size: 1.1em;
-            line-height: 1.6;
-            opacity: 0.8;
-            margin-bottom: 20px;
-        }
-        .url-box {
-            background: rgba(0, 0, 0, 0.2);
-            padding: 15px;
-            border-radius: 10px;
-            margin: 20px 0;
-            word-break: break-all;
-            font-family: monospace;
-        }
-        .manual-link {
-            color: rgba(255, 255, 255, 0.9);
-            text-decoration: underline;
-        }
-    </style>
-    <script>
-        setTimeout(() => {
-            window.location.href = '{Replace}';
-        }, 3000);
-    </script>
-</head>
-<body>
-    <div class="container">
-        <div class="spinner"></div>
-        <h1>Redirecting...</h1>
-        <p>You will be redirected to your destination in 3 seconds.</p>
-        <div class="url-box">{Replace}</div>
-        <p>If you're not redirected automatically, <a href="{Replace}" class="manual-link">click here</a>.</p>
-    </div>
-</body>
-</html>`
 
 let response_header = {
     "content-type": "text/html;charset=UTF-8",
@@ -434,7 +160,7 @@ async function is_url_safe(url) {
         redirect: 'follow'
     };
 
-    result = await fetch("https://safebrowsing.googleapis.com/v4/threatMatches:find?key=" + config.worker.safe_browsing_api_key, requestOptions);
+    let result = await fetch("https://safebrowsing.googleapis.com/v4/threatMatches:find?key=" + config.worker.safe_browsing_api_key, requestOptions);
     result = await result.json();
     console.log(result);
     if (Object.keys(result).length === 0) {
@@ -532,7 +258,8 @@ async function handleRequest(request) {
     console.log(path);
 
     if (!path) {
-        return new Response(html404, {
+        const html404 = await fetch("https://dytsou.github.io/404.html");
+        return new Response(await html404.text(), {
             headers: {
                 "content-type": "text/html;charset=UTF-8",
             },
@@ -553,8 +280,10 @@ async function handleRequest(request) {
     if (location) {
         if (config.worker.safe_browsing_api_key) {
             if (!(await is_url_safe(location))) {
-                let warning_page = safeBrowsingWarning.replace(/{Replace}/gm, location);
-                return new Response(warning_page, {
+                let warning_page = await fetch("https://dytsou.github.io/safe-browsing-warning.html");
+                let warning_html = await warning_page.text();
+                warning_html = warning_html.replace(/{Replace}/gm, location);
+                return new Response(warning_html, {
                     headers: {
                         "content-type": "text/html;charset=UTF-8",
                     },
@@ -563,8 +292,10 @@ async function handleRequest(request) {
         }
 
         if (config.worker.no_ref == "on") {
-            let no_ref = noRefPage.replace(/{Replace}/gm, location);
-            return new Response(no_ref, {
+            let no_ref = await fetch("https://dytsou.github.io/no-ref-page.html");
+            let no_ref_html = await no_ref.text();
+            no_ref_html = no_ref_html.replace(/{Replace}/gm, location);
+            return new Response(no_ref_html, {
                 headers: {
                     "content-type": "text/html;charset=UTF-8",
                 },
