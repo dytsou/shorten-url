@@ -8,7 +8,6 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "preview": "wrangler dev",
-    "publish": "pnpm publish:npmjs",
     "publish:npmjs": "bash scripts/publish-npmjs.sh",
     "publish:github": "pnpm publish --registry https://npm.pkg.github.com",
     "test": "vitest run",
