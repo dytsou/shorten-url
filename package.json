@@ -35,7 +35,7 @@
     "node": ">=18.0.0"
   },
   "devDependencies": {
-    "wrangler": "^3.0.0",
+    "wrangler": "^4.50.0",
     "vitest": "^4.0.13"
   },
   "packageManager": "pnpm@10.22.0",
