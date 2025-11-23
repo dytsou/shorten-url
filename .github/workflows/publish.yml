@@ -1,0 +1,241 @@
+name: Publish to npmjs & GitHub Packages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'package.json'
+      - 'src/**'
+      - 'config/**'
+  release:
+    types: [created]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Get package version
+        id: package-version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Current package version: $VERSION"
+
+      - name: Check if version exists on npmjs
+        id: check-npmjs
+        run: |
+          VERSION=${{ steps.package-version.outputs.version }}
+          if npm view @dytsou/shorten-url@$VERSION version --registry=https://registry.npmjs.org >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Version $VERSION already exists on npmjs, will skip npmjs publish"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Version $VERSION is new on npmjs, will publish"
+          fi
+        continue-on-error: true
+
+      - name: Check if version exists on GitHub Packages
+        id: check-github
+        run: |
+          VERSION=${{ steps.package-version.outputs.version }}
+          npm config set @dytsou:registry https://npm.pkg.github.com
+          npm config set //npm.pkg.github.com/:_authToken ${{ secrets.GITHUB_TOKEN }}
+          if npm view @dytsou/shorten-url@$VERSION version --registry=https://npm.pkg.github.com >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Version $VERSION already exists on GitHub Packages, will skip GitHub Packages publish"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Version $VERSION is new on GitHub Packages, will publish"
+          fi
+        continue-on-error: true
+
+      - name: Install dependencies
+        if: steps.check-npmjs.outputs.exists == 'false' || steps.check-github.outputs.exists == 'false'
+        run: |
+          pnpm install --frozen-lockfile
+
+      - name: Verify package
+        if: steps.check-npmjs.outputs.exists == 'false' || steps.check-github.outputs.exists == 'false'
+        run: |
+          pnpm pack --dry-run
+
+      # 1) Publish to npmjs
+      - name: Publish to npmjs
+        if: steps.check-npmjs.outputs.exists == 'false'
+        id: publish-npmjs
+        run: |
+          npm config set registry https://registry.npmjs.org
+          npm config set //registry.npmjs.org/:_authToken ${{ secrets.NPM_TOKEN }}
+          pnpm publish --access public --no-git-checks --registry https://registry.npmjs.org || {
+            if npm view @dytsou/shorten-url@${{ steps.package-version.outputs.version }} version --registry=https://registry.npmjs.org >/dev/null 2>&1; then
+              echo "Version already exists, skipping publish"
+              exit 0
+            else
+              echo "Publish failed for unknown reason"
+              exit 1
+            fi
+          }
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        continue-on-error: true
+
+      # 2) Publish to GitHub Packages
+      - name: Publish to GitHub Packages
+        if: steps.check-github.outputs.exists == 'false'
+        id: publish-github
+        run: |
+          npm config set registry https://npm.pkg.github.com
+          npm config set @dytsou:registry https://npm.pkg.github.com
+          npm config set //npm.pkg.github.com/:_authToken ${{ secrets.GITHUB_TOKEN }}
+          pnpm publish --no-git-checks --registry https://npm.pkg.github.com || {
+            if npm view @dytsou/shorten-url@${{ steps.package-version.outputs.version }} version --registry=https://npm.pkg.github.com >/dev/null 2>&1; then
+              echo "Version already exists, skipping publish"
+              exit 0
+            else
+              echo "Publish failed for unknown reason"
+              exit 1
+            fi
+          }
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Check if release should be created
+        id: should-create-release
+        run: |
+          NPMJS_PUBLISHED=false
+          GITHUB_PUBLISHED=false
+          NPMJS_SKIPPED=false
+          GITHUB_SKIPPED=false
+          
+          # Check if npmjs was published in this run
+          if [ "${{ steps.check-npmjs.outputs.exists }}" == "false" ] && [ "${{ steps.publish-npmjs.outcome }}" == "success" ]; then
+            NPMJS_PUBLISHED=true
+          elif [ "${{ steps.check-npmjs.outputs.exists }}" == "true" ]; then
+            NPMJS_SKIPPED=true
+          fi
+          
+          # Check if GitHub Packages was published in this run
+          if [ "${{ steps.check-github.outputs.exists }}" == "false" ] && [ "${{ steps.publish-github.outcome }}" == "success" ]; then
+            GITHUB_PUBLISHED=true
+          elif [ "${{ steps.check-github.outputs.exists }}" == "true" ]; then
+            GITHUB_SKIPPED=true
+          fi
+          
+          # Create release if:
+          # 1. Any registry was published in this run, OR
+          # 2. GitHub Packages was published (even if npmjs was skipped because it already exists)
+          if [ "$NPMJS_PUBLISHED" == "true" ] || [ "$GITHUB_PUBLISHED" == "true" ]; then
+            echo "should_create=true" >> $GITHUB_OUTPUT
+            echo "Should create release: npmjs_published=$NPMJS_PUBLISHED, github_published=$GITHUB_PUBLISHED, npmjs_skipped=$NPMJS_SKIPPED, github_skipped=$GITHUB_SKIPPED"
+          else
+            echo "should_create=false" >> $GITHUB_OUTPUT
+            echo "Skipping release creation - no new publishes (both may already exist)"
+          fi
+
+      - name: Create GitHub Release
+        if: steps.should-create-release.outputs.should_create == 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.package-version.outputs.version }}
+          name: v${{ steps.package-version.outputs.version }}
+          prerelease: ${{ contains(steps.package-version.outputs.version, 'beta') || contains(steps.package-version.outputs.version, 'alpha') || contains(steps.package-version.outputs.version, 'rc') }}
+          body: |
+            ## @dytsou/shorten-url@${{ steps.package-version.outputs.version }}
+
+            **Published to multiple registries:**
+
+            - **npmjs.com**: https://www.npmjs.com/package/@dytsou/shorten-url
+
+            - **GitHub Packages**: https://github.com/dytsou/shorten-url/packages
+
+            *Note: If a registry already had this version, it was skipped. Only missing registries were published.*
+
+            ### Installation
+
+            **From npmjs (default):**
+
+            ```bash
+            npm install -g @dytsou/shorten-url
+
+            # or
+
+            pnpm install -g @dytsou/shorten-url
+            ```
+
+            **From GitHub Packages:**
+
+            
+            First, create or update your `.npmrc` file:
+
+            ```ini
+            @dytsou:registry=https://npm.pkg.github.com
+            //npm.pkg.github.com/:_authToken=YOUR_GITHUB_TOKEN
+            ```
+
+            Then install:
+
+            ```bash
+            npm install -g @dytsou/shorten-url
+
+            # or
+
+            pnpm install -g @dytsou/shorten-url
+            ```
+
+            ### Usage
+            ```bash
+            # This is a Cloudflare Workers project
+            # Use wrangler to deploy:
+            wrangler deploy
+            ```
+          generate_release_notes: true
+          draft: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish summary
+        if: always()
+        run: |
+          echo "## Publish Summary"
+          echo "### npmjs"
+          if [ "${{ steps.check-npmjs.outputs.exists }}" == "true" ]; then
+            echo "Skipped - version already exists"
+          elif [ "${{ steps.publish-npmjs.outcome }}" == "success" ]; then
+            echo "Published successfully"
+          elif [ "${{ steps.publish-npmjs.outcome }}" == "failure" ]; then
+            echo "Failed to publish"
+          else
+            echo "Skipped - not attempted"
+          fi
+          echo ""
+          echo "### GitHub Packages"
+          if [ "${{ steps.check-github.outputs.exists }}" == "true" ]; then
+            echo "Skipped - version already exists"
+          elif [ "${{ steps.publish-github.outcome }}" == "success" ]; then
+            echo "Published successfully"
+          elif [ "${{ steps.publish-github.outcome }}" == "failure" ]; then
+            echo "Failed to publish"
+          else
+            echo "Skipped - not attempted"
+          fi
+
