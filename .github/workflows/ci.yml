@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master]
+  workflow_dispatch:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        node-version: ['18', '20']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check for linting
+        continue-on-error: true
+        run: |
+          if pnpm list eslint 2>/dev/null | grep -q eslint; then
+            echo "Running linter..."
+            pnpm run lint
+          else
+            echo "No linter configured, skipping..."
+          fi
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Run test coverage
+        continue-on-error: true
+        run: pnpm run test:coverage || echo "Coverage check skipped"
+
+      - name: Verify package structure
+        run: |
+          # Check that required files exist
+          test -f package.json || (echo "package.json missing" && exit 1)
+          test -f src/worker.js || (echo "src/worker.js missing" && exit 1)
+          test -f README.md || (echo "README.md missing" && exit 1)
+          echo "Package structure verified ✓"
+
+      - name: Check package.json validity
+        run: |
+          node -e "require('./package.json')" && echo "package.json is valid ✓"
+
