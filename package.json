@@ -9,7 +9,7 @@
     "deploy": "wrangler deploy",
     "preview": "wrangler dev",
     "publish": "pnpm publish:npmjs",
-    "publish:npmjs": "pnpm publish --access public --registry https://registry.npmjs.org",
+    "publish:npmjs": "pnpm publish --access public --registry https://registry.npmjs.org --config.@dytsou:registry=https://registry.npmjs.org",
     "publish:github": "pnpm publish --registry https://npm.pkg.github.com",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -41,7 +41,8 @@
   },
   "packageManager": "pnpm@10.22.0",
   "files": [
-    "src/",
+    "src/worker.js",
+    "src/worker.example.js",
     "config/",
     "docs/",
     "README.md",
