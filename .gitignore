@@ -19,6 +19,9 @@ yarn-debug.log*
 yarn-error.log*
 package-lock.json
 yarn.lock
+# pnpm
+pnpm-debug.log*
+# Note: pnpm-lock.yaml should be committed to version control
 
 # Runtime data
 pids
