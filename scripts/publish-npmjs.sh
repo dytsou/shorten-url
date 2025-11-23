@@ -66,8 +66,22 @@ if npm view "$PACKAGE_NAME@$VERSION" version --registry=https://registry.npmjs.o
 fi
 
 # Publish to npmjs
-pnpm publish --access public --registry https://registry.npmjs.org --no-git-checks || {
+TMP_PUBLISH_LOG=$(mktemp)
+if pnpm publish --access public --registry https://registry.npmjs.org --no-git-checks > "$TMP_PUBLISH_LOG" 2>&1; then
+  cat "$TMP_PUBLISH_LOG"
+  rm -f "$TMP_PUBLISH_LOG"
+else
   PUBLISH_EXIT_CODE=$?
+  PUBLISH_OUTPUT=$(cat "$TMP_PUBLISH_LOG" 2>/dev/null || echo "")
+  cat "$TMP_PUBLISH_LOG"
+  rm -f "$TMP_PUBLISH_LOG"
+  
+  # Check if the error is because version already exists
+  if echo "$PUBLISH_OUTPUT" | grep -q "You cannot publish over the previously published versions"; then
+    echo "Version $VERSION already exists on npmjs.org, skipping publish"
+    exit 0
+  fi
+  
   # If publish failed, check if version was published (race condition)
   if npm view "$PACKAGE_NAME@$VERSION" version --registry=https://registry.npmjs.org >/dev/null 2>&1; then
     echo "Version $VERSION was published successfully (may have been published concurrently)"
@@ -76,4 +90,4 @@ pnpm publish --access public --registry https://registry.npmjs.org --no-git-chec
     echo "Publish failed for unknown reason"
     exit $PUBLISH_EXIT_CODE
   fi
-}
+fi
