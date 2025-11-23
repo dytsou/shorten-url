@@ -5,6 +5,11 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 NPMRC_FILE="$PROJECT_ROOT/.npmrc"
+PACKAGE_JSON="$PROJECT_ROOT/package.json"
+
+# Get version from package.json
+VERSION=$(node -p "require('$PACKAGE_JSON').version")
+PACKAGE_NAME=$(node -p "require('$PACKAGE_JSON').name")
 
 # Store original content in memory
 ORIGINAL_CONTENT=""
@@ -54,5 +59,21 @@ else
   fi
 fi
 
+# Check if version already exists on npmjs.org
+if npm view "$PACKAGE_NAME@$VERSION" version --registry=https://registry.npmjs.org >/dev/null 2>&1; then
+  echo "Version $VERSION already exists on npmjs.org, skipping publish"
+  exit 0
+fi
+
 # Publish to npmjs
-pnpm publish --access public --registry https://registry.npmjs.org --no-git-checks
+pnpm publish --access public --registry https://registry.npmjs.org --no-git-checks || {
+  PUBLISH_EXIT_CODE=$?
+  # If publish failed, check if version was published (race condition)
+  if npm view "$PACKAGE_NAME@$VERSION" version --registry=https://registry.npmjs.org >/dev/null 2>&1; then
+    echo "Version $VERSION was published successfully (may have been published concurrently)"
+    exit 0
+  else
+    echo "Publish failed for unknown reason"
+    exit $PUBLISH_EXIT_CODE
+  fi
+}
