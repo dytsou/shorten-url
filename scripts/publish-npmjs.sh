@@ -55,4 +55,4 @@ else
 fi
 
 # Publish to npmjs
-pnpm publish --access public --registry https://registry.npmjs.org
+pnpm publish --access public --registry https://registry.npmjs.org --no-git-checks
