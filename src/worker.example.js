@@ -159,7 +159,43 @@ async function is_url_safe(url) {
 async function handleRequest(request) {
     console.log(request);
 
+    const requestURL = new URL(request.url);
+    const pathname = requestURL.pathname;
+
+    // CORS preflight
+    if (request.method === "OPTIONS") {
+        return new Response("", {
+            status: 204,
+            headers: response_header,
+        });
+    }
+
     if (request.method === "POST") {
+        // Only allow shortening via the /shorten endpoint
+        if (pathname !== "/shorten") {
+            return new Response(
+                `{"status":404,"message":"Invalid API path"}`,
+                {
+                    status: 404,
+                    headers: {
+                        ...response_header,
+                        "content-type": "application/json;charset=UTF-8",
+                    },
+                },
+            );
+        }
+
+        // Enforce Cloudflare Access / WARP for this API
+        if (!requireAccess(request)) {
+            return new Response(
+                `{"status":403,"message":"You must use WARP to shorten the URL"}`,
+                {
+                    status: 403,
+                    headers: response_header,
+                },
+            );
+        }
+
         let req = await request.json();
         console.log(req["url"]);
 
@@ -220,13 +256,8 @@ async function handleRequest(request) {
                 headers: response_header,
             });
         }
-    } else if (request.method === "OPTIONS") {
-        return new Response(``, {
-            headers: response_header,
-        });
     }
 
-    const requestURL = new URL(request.url);
     const path = requestURL.pathname.split("/")[1];
     const params = requestURL.search;
 
@@ -289,3 +320,25 @@ async function handleRequest(request) {
 addEventListener("fetch", async event => {
     event.respondWith(handleRequest(event.request));
 });
+
+// Check whether this request has passed Cloudflare Access (Zero Trust / WARP)
+function requireAccess(request) {
+    const jwt = request.headers.get("Cf-Access-Jwt-Assertion");
+    const email = request.headers.get("Cf-Access-Authenticated-User-Email");
+
+    console.log("Access headers:", {
+        jwtPresent: !!jwt,
+        email,
+    });
+
+    // Defensive check: if Access is misconfigured, block unauthenticated traffic
+    if (!jwt || !email) {
+        return false;
+    }
+
+    // If you want to restrict to specific accounts, you can check email here:
+    // const allowed = ["you@nycu.edu.tw", "xxx@example.com"];
+    // if (!allowed.includes(email)) return false;
+
+    return true;
+}
