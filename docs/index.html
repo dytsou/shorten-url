@@ -429,7 +429,7 @@
                 }
 
                 // Make API call to your Cloudflare Worker
-                const response = await fetch(window.location.origin, {
+                const response = await fetch(window.location.origin + '/shorten/post', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -542,7 +542,7 @@
                 }
 
                 // Make API call to shorten URL
-                const response = await fetch(window.location.origin, {
+                const response = await fetch(window.location.origin + '/shorten/post', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
