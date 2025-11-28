@@ -14,7 +14,7 @@ servers:
   - url: https://url.tsou.me
 
 paths:
-  /shorten/post:
+  /shorten:
     post:
       summary: Shorten a URL
       description: Create a new shortened URL, optionally with a custom slug.
