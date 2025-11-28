@@ -12,7 +12,7 @@ A modern, fast URL shortener built with Cloudflare Workers and a responsive web 
 - **Security Features**: URL validation, rate limiting, and optional Safe Browsing integration
 - **Modern Copy Function**: One-click copying with fallbacks for all browsers
 - **Custom Error Pages**: Beautiful 404, security warning, and redirect pages (fully customizable via your GitHub Pages)
-- **API Documentation**: Interactive Swagger UI with OpenAPI 3.0.3 specification
+- **API Documentation**: Interactive Swagger UI with OpenAPI 3.1.0 specification
 - **Analytics Ready**: Optional click tracking and analytics integration
 
 ## Quick Start
@@ -205,7 +205,7 @@ The project includes comprehensive API documentation available at `/api` endpoin
 
 ### OpenAPI Specification
 
-- **Format**: OpenAPI 3.0.3
+- **Format**: OpenAPI 3.1.0
 - **Location**: [docs/api/openapi.yaml](docs/api/openapi.yaml)
 - **Interactive UI**: Available at `/api` endpoint on your deployed worker
 - **Offline Access**: [docs/api/index.html](docs/api/index.html) for local viewing
@@ -275,7 +275,7 @@ shorten-url/
 │   ├── index.html          # Homepage interface
 │   └── api/
 │       ├── index.html      # Swagger UI for API docs
-│       └── openapi.yaml    # OpenAPI 3.0.3 specification
+│       └── openapi.yaml    # OpenAPI 3.1.0 specification
 ├── config/
 │   ├── config.js           # Configuration (not in git)
 │   └── config.example.js   # Configuration template
