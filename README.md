@@ -6,7 +6,7 @@ A modern, fast URL shortener built with Cloudflare Workers and a responsive web 
 
 - **URL Shortening**: Convert long URLs into short, shareable links
 - **Custom Slugs**: Create personalized short URLs (optional)
-- **Open Access**: No authentication required - anyone can create short URLs
+- **Protected Shortening**: Short URL creation is protected behind Cloudflare Access / WARP for safer usage
 - **Responsive Design**: Works seamlessly on desktop and mobile devices
 - **Fast Performance**: Built on Cloudflare Workers for global edge deployment
 - **Security Features**: URL validation, rate limiting, and optional Safe Browsing integration
@@ -212,7 +212,7 @@ The project includes comprehensive API documentation available at `/api` endpoin
 
 ### Shorten URL
 
-**POST** `/`
+**POST** `/shorten`
 
 ```json
 {
@@ -254,11 +254,11 @@ Redirects to the original URL or shows appropriate error page.
 ### Local Development
 
 ```bash
-# Start local development server
+# Start local development server (see wrangler.toml for port / host)
 wrangler dev
 
-# Test with curl
-curl -X POST http://localhost:8000 \
+# Test with curl (example; in production, requests must pass through Cloudflare Access/WARP)
+curl -X POST http://localhost:8787/shorten \
   -H "Content-Type: application/json" \
   -d '{"url": "https://example.com"}'
 ```
@@ -293,7 +293,7 @@ shorten-url/
 - Enable rate limiting to prevent abuse
 - Consider enabling Google Safe Browsing for malicious URL detection
 - Regularly monitor your KV storage usage
-- Be aware this is an open system - anyone can create short URLs
+- Configure Cloudflare Access / WARP correctly, as URL shortening is intended to be available only to authenticated/requesters you control
 
 ## Troubleshooting
 
