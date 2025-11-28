@@ -405,6 +405,58 @@
 
         urlPrefix.textContent = currentDomain + '/';
 
+        // Helper to parse worker responses (JSON or text) and surface meaningful errors
+        async function parseWorkerResponse(response) {
+            const contentType = response.headers.get('content-type') || '';
+            let body = null;
+
+            if (contentType.includes('application/json')) {
+                try {
+                    body = await response.json();
+                } catch (e) {
+                    console.error('Failed to parse JSON response from worker:', e);
+                    body = null;
+                }
+            } else {
+                try {
+                    body = await response.text();
+                } catch (e) {
+                    console.error('Failed to read text response from worker:', e);
+                    body = null;
+                }
+            }
+
+            return body;
+        }
+
+        function getErrorMessageFromBody(body, status, defaultMsg) {
+            const prefix = typeof status === 'number' ? `[HTTP ${status}] ` : '';
+            const baseDefault = prefix + defaultMsg;
+
+            if (body == null) return baseDefault;
+
+            if (typeof body === 'string') {
+                const trimmed = body.trim();
+                return trimmed ? prefix + trimmed : baseDefault;
+            }
+
+            if (typeof body === 'object') {
+                if (typeof body.message === 'string' && body.message.trim() !== '') {
+                    return prefix + body.message;
+                }
+                if (typeof body.key === 'string' && body.key.trim() !== '') {
+                    return prefix + body.key;
+                }
+                try {
+                    return prefix + JSON.stringify(body);
+                } catch (e) {
+                    console.error('Failed to stringify error body:', e);
+                    return baseDefault;
+                }
+            }
+
+            return baseDefault;
+        }
 
         document.getElementById('urlForm').addEventListener('submit', async function (e) {
             e.preventDefault();
@@ -437,12 +489,12 @@
                     body: JSON.stringify(payload)
                 });
 
-                const result = await response.json();
+                const result = await parseWorkerResponse(response);
 
                 // Hide loading
                 document.getElementById('loading').classList.remove('show');
 
-                if (response.ok && result.status === 200) {
+                if (response.ok && result && result.status === 200) {
                     // Show success result
                     const shortUrl = window.location.origin + (result.key.startsWith('/') ? result.key : '/' + result.key);
                     document.getElementById('shortUrlOutput').value = shortUrl;
@@ -451,8 +503,12 @@
                     // Reset form
                     document.getElementById('urlForm').reset();
                 } else {
-                    // Show error
-                    const errorMsg = result.message || result.key || 'An error occurred while shortening the URL.';
+                    // Show error using worker-provided message when available
+                    const errorMsg = getErrorMessageFromBody(
+                        result,
+                        response.status,
+                        'Unable to shorten URL. Please check your input and try again.'
+                    );
                     document.getElementById('error').textContent = errorMsg;
                     document.getElementById('error').classList.add('show');
                 }
@@ -550,9 +606,9 @@
                     body: JSON.stringify(payload)
                 });
 
-                const result = await response.json();
+                const result = await parseWorkerResponse(response);
 
-                if (response.ok && result.status === 200) {
+                if (response.ok && result && result.status === 200) {
                     // URL shortened successfully, now open it
                     const shortUrl = window.location.origin + (result.key.startsWith('/') ? result.key : '/' + result.key);
 
@@ -570,8 +626,12 @@
                     document.getElementById('result').classList.add('show');
                     document.getElementById('error').classList.remove('show');
                 } else {
-                    // Show error
-                    const errorMsg = result.message || result.key || 'Error shortening URL';
+                    // Show error using worker-provided message when available
+                    const errorMsg = getErrorMessageFromBody(
+                        result,
+                        response.status,
+                        'Unable to shorten URL. Please verify the URL and try again.'
+                    );
                     showGotoFeedback(gotoBtn, 'Error!', '#dc3545', originalText, originalBg);
                     document.getElementById('error').textContent = errorMsg;
                     document.getElementById('error').classList.add('show');
