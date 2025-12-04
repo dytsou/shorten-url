@@ -225,8 +225,7 @@ The project includes comprehensive API documentation available at `/api` endpoin
 
 ```json
 {
-    "status": 200,
-    "key": "/abc123"
+    "short_url": "https://url.tsou.me/abc123"
 }
 ```
 
