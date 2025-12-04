@@ -263,14 +263,29 @@ async function handleRequest(request) {
         }
 
         if (typeof (stat) == "undefined") {
-            return new Response(`{"status":200,"key":"/${random_key}"}`, {
-                headers: response_header,
-            });
-        } else {
-            return new Response(`{"status":500,"message":"Error: Reach the KV write limitation"}`, {
-                headers: response_header,
-            });
+            const shortUrl = `${requestURL.origin}/${random_key}`;
+            return new Response(
+                JSON.stringify({ short_url: shortUrl }),
+                {
+                    status: 201,
+                    headers: {
+                        ...response_header,
+                        "content-type": "application/json;charset=UTF-8",
+                    },
+                },
+            );
         }
+
+        return new Response(
+            `{"status":500,"message":"Error: Reach the KV write limitation"}`,
+            {
+                status: 500,
+                headers: {
+                    ...response_header,
+                    "content-type": "application/json;charset=UTF-8",
+                },
+            },
+        );
     }
 
     const path = requestURL.pathname.split("/")[1];
