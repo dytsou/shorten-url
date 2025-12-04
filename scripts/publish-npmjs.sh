@@ -59,8 +59,8 @@ else
   fi
 fi
 
-# Check if version already exists on npmjs.org
-if npm view "$PACKAGE_NAME@$VERSION" version --registry=https://registry.npmjs.org >/dev/null 2>&1; then
+# Check if version already exists on npmjs.org (using pnpm)
+if pnpm view "$PACKAGE_NAME@$VERSION" version --registry=https://registry.npmjs.org >/dev/null 2>&1; then
   echo "Version $VERSION already exists on npmjs.org, skipping publish"
   exit 0
 fi
@@ -82,8 +82,8 @@ else
     exit 0
   fi
   
-  # If publish failed, check if version was published (race condition)
-  if npm view "$PACKAGE_NAME@$VERSION" version --registry=https://registry.npmjs.org >/dev/null 2>&1; then
+  # If publish failed, check if version was published (race condition, using pnpm)
+  if pnpm view "$PACKAGE_NAME@$VERSION" version --registry=https://registry.npmjs.org >/dev/null 2>&1; then
     echo "Version $VERSION was published successfully (may have been published concurrently)"
     exit 0
   else
