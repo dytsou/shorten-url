@@ -501,9 +501,11 @@
                     document.getElementById('result').classList.add('show');
                     const linkWrapper = document.getElementById('shortUrlLinkWrapper');
                     const linkEl = document.getElementById('shortUrlLink');
-                    linkEl.href = shortUrl;
-                    linkEl.textContent = shortUrl;
-                    linkWrapper.style.display = 'block';
+                    if (linkWrapper && linkEl) {
+                        linkEl.href = shortUrl;
+                        linkEl.textContent = shortUrl;
+                        linkWrapper.style.display = 'block';
+                    }
 
                     // Reset form
                     document.getElementById('urlForm').reset();
@@ -629,11 +631,16 @@
                     // Also show the shortened URL in the result area
                     document.getElementById('shortUrlOutput').value = shortUrl;
                     document.getElementById('result').classList.add('show');
+
+                    // Optionally update a clickable link if the elements exist in the DOM.
                     const linkWrapper = document.getElementById('shortUrlLinkWrapper');
                     const linkEl = document.getElementById('shortUrlLink');
-                    linkEl.href = shortUrl;
-                    linkEl.textContent = shortUrl;
-                    linkWrapper.style.display = 'block';
+                    if (linkWrapper && linkEl) {
+                        linkEl.href = shortUrl;
+                        linkEl.textContent = shortUrl;
+                        linkWrapper.style.display = 'block';
+                    }
+
                     document.getElementById('error').classList.remove('show');
                 } else {
                     // Show error using worker-provided message when available
