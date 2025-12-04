@@ -39,19 +39,17 @@ paths:
                   description: Optional custom slug for the short URL
                   example: my-custom-link
       responses:
-        "200":
+        "201":
           description: URL successfully shortened
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  status:
-                    type: integer
-                    example: 200
-                  key:
+                  short_url:
                     type: string
-                    example: /abc123
+                    format: uri
+                    example: https://url.tsou.me/abc123
         "400":
           description: Bad request
           content:
@@ -139,10 +137,9 @@ components:
     ShortenResponse:
       type: object
       properties:
-        status:
-          type: integer
-        key:
+        short_url:
           type: string
+          format: uri
 
     ErrorResponse:
       type: object

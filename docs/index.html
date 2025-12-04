@@ -338,6 +338,10 @@
                 <input type="text" id="shortUrlOutput" readonly>
                 <button class="copy-btn" onclick="copyToClipboard()">Copy</button>
             </div>
+            <div class="help-text" id="shortUrlLinkWrapper" style="margin-top: 10px; display: none;">
+                <span>Shortened URL:&nbsp;</span>
+                <a id="shortUrlLink" href="#" target="_blank" rel="noopener noreferrer"></a>
+            </div>
         </div>
     </div>
 
@@ -494,11 +498,16 @@
                 // Hide loading
                 document.getElementById('loading').classList.remove('show');
 
-                if (response.ok && result && result.status === 200) {
-                    // Show success result
-                    const shortUrl = window.location.origin + (result.key.startsWith('/') ? result.key : '/' + result.key);
+                if (response.ok && result && typeof result.short_url === 'string') {
+                    // Show success result using short_url from API
+                    const shortUrl = result.short_url;
                     document.getElementById('shortUrlOutput').value = shortUrl;
                     document.getElementById('result').classList.add('show');
+                    const linkWrapper = document.getElementById('shortUrlLinkWrapper');
+                    const linkEl = document.getElementById('shortUrlLink');
+                    linkEl.href = shortUrl;
+                    linkEl.textContent = shortUrl;
+                    linkWrapper.style.display = 'inline';
 
                     // Reset form
                     document.getElementById('urlForm').reset();
@@ -608,9 +617,9 @@
 
                 const result = await parseWorkerResponse(response);
 
-                if (response.ok && result && result.status === 200) {
+                if (response.ok && result && typeof result.short_url === 'string') {
                     // URL shortened successfully, now open it
-                    const shortUrl = window.location.origin + (result.key.startsWith('/') ? result.key : '/' + result.key);
+                    const shortUrl = result.short_url;
 
                     // Open the shortened URL in a new tab
                     window.open(shortUrl, '_blank', 'noopener,noreferrer');
@@ -624,6 +633,11 @@
                     // Also show the shortened URL in the result area
                     document.getElementById('shortUrlOutput').value = shortUrl;
                     document.getElementById('result').classList.add('show');
+                    const linkWrapper = document.getElementById('shortUrlLinkWrapper');
+                    const linkEl = document.getElementById('shortUrlLink');
+                    linkEl.href = shortUrl;
+                    linkEl.textContent = shortUrl;
+                    linkWrapper.style.display = 'inline';
                     document.getElementById('error').classList.remove('show');
                 } else {
                     // Show error using worker-provided message when available
