@@ -5,9 +5,9 @@ on:
     branches:
       - main
     paths:
-      - 'package.json'
-      - 'src/**'
-      - 'config/**'
+      - "package.json"
+      - "src/**"
+      - "config/**"
   release:
     types: [created]
   workflow_dispatch:
@@ -28,7 +28,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Enable Corepack
         run: corepack enable
@@ -40,11 +40,19 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Current package version: $VERSION"
 
+      - name: Get package name
+        id: package-name
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          echo "name=$NAME" >> $GITHUB_OUTPUT
+          echo "Current package name: $NAME"
+
       - name: Check if version exists on npmjs
         id: check-npmjs
         run: |
           VERSION=${{ steps.package-version.outputs.version }}
-          if npm view @dytsou/shorten-url@$VERSION version --registry=https://registry.npmjs.org >/dev/null 2>&1; then
+          PACKAGE_NAME=${{ steps.package-name.outputs.name }}
+          if npm view $PACKAGE_NAME@$VERSION version --registry=https://registry.npmjs.org >/dev/null 2>&1; then
             echo "exists=true" >> $GITHUB_OUTPUT
             echo "Version $VERSION already exists on npmjs, will skip npmjs publish"
           else
@@ -57,9 +65,11 @@ jobs:
         id: check-github
         run: |
           VERSION=${{ steps.package-version.outputs.version }}
-          npm config set @dytsou:registry https://npm.pkg.github.com
+          PACKAGE_NAME=${{ steps.package-name.outputs.name }}
+          SCOPE=$(echo $PACKAGE_NAME | cut -d'/' -f1)
+          npm config set $SCOPE:registry https://npm.pkg.github.com
           npm config set //npm.pkg.github.com/:_authToken ${{ secrets.GITHUB_TOKEN }}
-          if npm view @dytsou/shorten-url@$VERSION version --registry=https://npm.pkg.github.com >/dev/null 2>&1; then
+          if npm view $PACKAGE_NAME@$VERSION version --registry=https://npm.pkg.github.com >/dev/null 2>&1; then
             echo "exists=true" >> $GITHUB_OUTPUT
             echo "Version $VERSION already exists on GitHub Packages, will skip GitHub Packages publish"
           else
@@ -87,8 +97,9 @@ jobs:
         run: |
           npm config set registry https://registry.npmjs.org
           npm config set //registry.npmjs.org/:_authToken ${{ secrets.NPM_TOKEN }}
+          PACKAGE_NAME=${{ steps.package-name.outputs.name }}
           pnpm publish --access public --no-git-checks --registry https://registry.npmjs.org || {
-            if npm view @dytsou/shorten-url@${{ steps.package-version.outputs.version }} version --registry=https://registry.npmjs.org >/dev/null 2>&1; then
+            if npm view $PACKAGE_NAME@${{ steps.package-version.outputs.version }} version --registry=https://registry.npmjs.org >/dev/null 2>&1; then
               echo "Version already exists, skipping publish"
               exit 0
             else
@@ -106,10 +117,12 @@ jobs:
         id: publish-github
         run: |
           npm config set registry https://npm.pkg.github.com
-          npm config set @dytsou:registry https://npm.pkg.github.com
+          PACKAGE_NAME=${{ steps.package-name.outputs.name }}
+          SCOPE=$(echo $PACKAGE_NAME | cut -d'/' -f1)
+          npm config set $SCOPE:registry https://npm.pkg.github.com
           npm config set //npm.pkg.github.com/:_authToken ${{ secrets.GITHUB_TOKEN }}
           pnpm publish --no-git-checks --registry https://npm.pkg.github.com || {
-            if npm view @dytsou/shorten-url@${{ steps.package-version.outputs.version }} version --registry=https://npm.pkg.github.com >/dev/null 2>&1; then
+            if npm view $PACKAGE_NAME@${{ steps.package-version.outputs.version }} version --registry=https://npm.pkg.github.com >/dev/null 2>&1; then
               echo "Version already exists, skipping publish"
               exit 0
             else
@@ -121,6 +134,14 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: true
 
+      - name: Get package scope
+        id: package-scope
+        run: |
+          PACKAGE_NAME=${{ steps.package-name.outputs.name }}
+          SCOPE=$(echo $PACKAGE_NAME | cut -d'/' -f1)
+          echo "scope=$SCOPE" >> $GITHUB_OUTPUT
+          echo "Package scope: $SCOPE"
+
       - name: Check if release should be created
         id: should-create-release
         run: |
@@ -128,21 +149,21 @@ jobs:
           GITHUB_PUBLISHED=false
           NPMJS_SKIPPED=false
           GITHUB_SKIPPED=false
-          
+
           # Check if npmjs was published in this run
           if [ "${{ steps.check-npmjs.outputs.exists }}" == "false" ] && [ "${{ steps.publish-npmjs.outcome }}" == "success" ]; then
             NPMJS_PUBLISHED=true
           elif [ "${{ steps.check-npmjs.outputs.exists }}" == "true" ]; then
             NPMJS_SKIPPED=true
           fi
-          
+
           # Check if GitHub Packages was published in this run
           if [ "${{ steps.check-github.outputs.exists }}" == "false" ] && [ "${{ steps.publish-github.outcome }}" == "success" ]; then
             GITHUB_PUBLISHED=true
           elif [ "${{ steps.check-github.outputs.exists }}" == "true" ]; then
             GITHUB_SKIPPED=true
           fi
-          
+
           # Create release if:
           # 1. Any registry was published in this run, OR
           # 2. GitHub Packages was published (even if npmjs was skipped because it already exists)
@@ -162,13 +183,13 @@ jobs:
           name: v${{ steps.package-version.outputs.version }}
           prerelease: ${{ contains(steps.package-version.outputs.version, 'beta') || contains(steps.package-version.outputs.version, 'alpha') || contains(steps.package-version.outputs.version, 'rc') }}
           body: |
-            ## @dytsou/shorten-url@${{ steps.package-version.outputs.version }}
+            ## ${{ steps.package-name.outputs.name }}@${{ steps.package-version.outputs.version }}
 
             **Published to multiple registries:**
 
-            - **npmjs.com**: https://www.npmjs.com/package/@dytsou/shorten-url
+            - **npmjs.com**: https://www.npmjs.com/package/${{ steps.package-name.outputs.name }}
 
-            - **GitHub Packages**: https://github.com/dytsou/shorten-url/packages
+            - **GitHub Packages**: https://github.com/${{ github.repository }}/packages
 
             *Note: If a registry already had this version, it was skipped. Only missing registries were published.*
 
@@ -177,31 +198,31 @@ jobs:
             **From npmjs (default):**
 
             ```bash
-            npm install -g @dytsou/shorten-url
+            npm install -g ${{ steps.package-name.outputs.name }}
 
             # or
 
-            pnpm install -g @dytsou/shorten-url
+            pnpm install -g ${{ steps.package-name.outputs.name }}
             ```
 
             **From GitHub Packages:**
 
-            
+
             First, create or update your `.npmrc` file:
 
             ```ini
-            @dytsou:registry=https://npm.pkg.github.com
+            ${{ steps.package-scope.outputs.scope }}:registry=https://npm.pkg.github.com
             //npm.pkg.github.com/:_authToken=YOUR_GITHUB_TOKEN
             ```
 
             Then install:
 
             ```bash
-            npm install -g @dytsou/shorten-url
+            npm install -g ${{ steps.package-name.outputs.name }}
 
             # or
 
-            pnpm install -g @dytsou/shorten-url
+            pnpm install -g ${{ steps.package-name.outputs.name }}
             ```
 
             ### Usage
@@ -240,4 +261,3 @@ jobs:
           else
             echo "Skipped - not attempted"
           fi
-
