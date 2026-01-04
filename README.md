@@ -52,19 +52,34 @@ const config = {
 };
 ```
 
-### 3. Deploy Frontend
+### 3. Build and Deploy Frontend
+
+#### Build the React Frontend
+
+```bash
+# Navigate to frontend directory
+cd frontend
+
+# Install dependencies
+pnpm install
+
+# Build for production (outputs to ../docs/)
+pnpm build
+```
 
 #### Option A: GitHub Pages (Recommended)
 
-1. Push your code to GitHub
-2. Go to your repository settings
-3. Enable GitHub Pages for the main branch
-4. Your frontend will be available at `https://yourusername.github.io/shorten-url/`
+1. Build the frontend (see above)
+2. Push your code to GitHub
+3. Go to your repository settings
+4. Enable GitHub Pages for the main branch
+5. Your frontend will be available at `https://yourusername.github.io/shorten-url/`
 
 #### Option B: Custom Domain
 
-1. Upload the `docs/` directory to your web hosting
-2. Update the `frontend.url` in `config/config.js` to match your domain
+1. Build the frontend (see above)
+2. Upload the `docs/` directory to your web hosting
+3. Update the `frontend.url` in `config/config.js` to match your domain
 
 ### 4. Setup Cloudflare Workers
 
@@ -252,6 +267,8 @@ Redirects to the original URL or shows appropriate error page.
 
 ### Local Development
 
+#### Backend (Worker)
+
 ```bash
 # Start local development server (see wrangler.toml for port / host)
 wrangler dev
@@ -262,6 +279,25 @@ curl -X POST http://localhost:8787/shorten \
   -d '{"url": "https://example.com"}'
 ```
 
+#### Frontend (React + Redux)
+
+```bash
+# Navigate to frontend directory
+cd frontend
+
+# Install dependencies (first time only)
+pnpm install
+
+# Start development server with hot reload
+pnpm dev
+
+# Build for production (outputs to ../docs/)
+pnpm build
+
+# Preview production build
+pnpm preview
+```
+
 ### File Structure
 
 ```
@@ -270,8 +306,19 @@ shorten-url/
 │   ├── worker.js           # Production Cloudflare Worker
 │   ├── worker.dev.js       # Development Cloudflare Worker
 │   └── worker.example.js   # Worker template
+├── frontend/               # React + Redux frontend
+│   ├── src/
+│   │   ├── components/     # React components
+│   │   ├── store/          # Redux store and slices
+│   │   ├── styles/         # CSS stylesheets
+│   │   ├── utils/          # Utility functions
+│   │   ├── App.jsx         # Main app component
+│   │   └── index.jsx       # React entry point
+│   ├── package.json        # Frontend dependencies
+│   └── vite.config.js      # Vite build configuration
 ├── docs/
-│   ├── index.html          # Homepage interface
+│   ├── index.html          # Built React app (generated)
+│   ├── assets/             # Built CSS/JS assets (generated)
 │   └── api/
 │       ├── index.html      # Swagger UI for API docs
 │       └── openapi.yaml    # OpenAPI 3.1.0 specification

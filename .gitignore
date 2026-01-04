@@ -131,6 +131,9 @@ coverage/
 build/
 dist/
 out/
+# React build output (generated files)
+docs/index.html
+docs/assets/
 
 # Cloudflare Workers specific
 worker.dev.js
