@@ -24,6 +24,39 @@ if (config.worker.cors == "on") {
     }
 }
 
+// Check whether this request has passed Cloudflare Access (Zero Trust / WARP)
+function requireAccess(request) {
+    const jwt = request.headers.get("Cf-Access-Jwt-Assertion");
+    const email = request.headers.get("Cf-Access-Authenticated-User-Email");
+
+    console.log("Access headers:", {
+        jwtPresent: !!jwt,
+        email,
+    });
+
+    // Defensive check: if Access is misconfigured, block unauthenticated traffic
+    if (!jwt || !email) {
+        return false;
+    }
+
+    // If you want to restrict to specific accounts, you can check email here:
+    // const allowed = ["you@nycu.edu.tw", "xxx@example.com"];
+    // if (!allowed.includes(email)) return false;
+
+    return true;
+}
+
+// Create JSON error response
+function createJsonErrorResponse(message, code) {
+    return new Response(JSON.stringify({ status: code, message: message }), {
+        status: code,
+        headers: {
+            ...response_header,
+            "content-type": "application/json;charset=UTF-8",
+        },
+    });
+}
+
 // Generate random string for short URLs
 async function randomString(len) {
     len = len || config.worker.min_random_key_length;
@@ -89,27 +122,33 @@ async function validateCustomSlug(slug) {
 
 // Save URL with random or custom key
 async function save_url(URL, customSlug = null) {
-    let random_key;
+    try {
+        let random_key;
 
-    if (customSlug) {
-        // Use custom slug if provided
-        random_key = customSlug;
-    } else {
-        // Generate random key
-        random_key = await randomString();
-    }
+        if (customSlug) {
+            // Use custom slug if provided
+            random_key = customSlug;
+        } else {
+            // Generate random key
+            random_key = await randomString();
+        }
 
-    let is_exist = await LINKS.get(random_key);
-    console.log(is_exist);
+        let is_exist = await LINKS.get(random_key);
+        console.log(is_exist);
 
-    if (is_exist == null) {
-        return await LINKS.put(random_key, URL), random_key;
-    } else if (customSlug) {
-        // If custom slug already exists, return error
-        return "CUSTOM_SLUG_EXISTS", null;
-    } else {
-        // If random key exists, try again
-        return save_url(URL);
+        if (is_exist == null) {
+            await LINKS.put(random_key, URL);
+            return [undefined, random_key];
+        } else if (customSlug) {
+            // If custom slug already exists, return error
+            return ["CUSTOM_SLUG_EXISTS", null];
+        } else {
+            // If random key exists, try again
+            return save_url(URL);
+        }
+    } catch (error) {
+        console.error("Error in save_url:", error);
+        return ["KV_ERROR", null];
     }
 }
 
@@ -155,136 +194,8 @@ async function is_url_safe(url) {
     }
 }
 
-// Main request handler
-async function handleRequest(request) {
-    console.log(request);
-
-    const requestURL = new URL(request.url);
-    const pathname = requestURL.pathname;
-
-    // CORS preflight
-    if (request.method === "OPTIONS") {
-        return new Response("", {
-            status: 204,
-            headers: response_header,
-        });
-    }
-
-    if (request.method === "POST") {
-        // Only allow shortening via the /shorten endpoint
-        if (pathname !== "/shorten") {
-            return new Response(
-                `{"status":404,"message":"Invalid API path"}`,
-                {
-                    status: 404,
-                    headers: {
-                        ...response_header,
-                        "content-type": "application/json;charset=UTF-8",
-                    },
-                },
-            );
-        }
-
-        // Enforce Cloudflare Access / WARP for this API
-        if (!requireAccess(request)) {
-            return new Response(
-                `{"status":403,"message":"You must use WARP to shorten the URL"}`,
-                {
-                    status: 403,
-                    headers: response_header,
-                },
-            );
-        }
-
-        let req = await request.json();
-        console.log(req["url"]);
-
-        // Validate URL
-        if (!await checkURL(req["url"])) {
-            return new Response(
-                `{"status":400,"message":"Invalid URL format"}`,
-                {
-                    status: 400,
-                    headers: {
-                        ...response_header,
-                        "content-type": "application/json;charset=UTF-8",
-                    },
-                },
-            );
-        }
-
-        let stat, random_key;
-        let customSlug = req["custom_slug"] || null;
-
-        // Validate custom slug if provided
-        if (customSlug) {
-            if (!config.worker.custom_link) {
-                return new Response(`{"status":400,"message":"Custom URLs are disabled"}`, {
-                    headers: response_header,
-                });
-            }
-
-            if (!await validateCustomSlug(customSlug)) {
-                return new Response(`{"status":400,"message":"Invalid custom slug format"}`, {
-                    headers: response_header,
-                });
-            }
-        }
-
-        if (config.worker.unique_link && !customSlug) {
-            let url_sha512 = await sha512(req["url"]);
-            let url_key = await is_url_exist(url_sha512);
-            if (url_key) {
-                random_key = url_key;
-            } else {
-                stat, random_key = await save_url(req["url"], customSlug);
-                if (typeof (stat) == "undefined") {
-                    console.log(await LINKS.put(url_sha512, random_key));
-                }
-            }
-        } else {
-            stat, random_key = await save_url(req["url"], customSlug);
-        }
-
-        console.log(stat);
-
-        if (stat === "CUSTOM_SLUG_EXISTS") {
-            return new Response(`{"status":400,"message":"Custom slug already exists"}`, {
-                headers: response_header,
-            });
-        }
-
-        if (typeof (stat) == "undefined") {
-            const shortUrl = `${requestURL.origin}/${random_key}`;
-            return new Response(
-                JSON.stringify({ short_url: shortUrl }),
-                {
-                    status: 201,
-                    headers: {
-                        ...response_header,
-                        "content-type": "application/json;charset=UTF-8",
-                    },
-                },
-            );
-        }
-
-        return new Response(
-            `{"status":500,"message":"Error: Reach the KV write limitation"}`,
-            {
-                status: 500,
-                headers: {
-                    ...response_header,
-                    "content-type": "application/json;charset=UTF-8",
-                },
-            },
-        );
-    }
-
-    const path = requestURL.pathname.split("/")[1];
-    const params = requestURL.search;
-
-    console.log(path);
-
+// Handle short URL redirect
+async function handleShortUrlRedirect(path, params) {
     if (!path) {
         const html404 = await fetch("https://dytsou.github.io/404.html");
         return new Response(await html404.text(), {
@@ -339,28 +250,123 @@ async function handleRequest(request) {
     });
 }
 
+// Handle GET requests
+async function handleGetRequest(requestURL) {
+    const path = requestURL.pathname.split("/")[1];
+    const params = requestURL.search;
+    console.log(path);
+    return await handleShortUrlRedirect(path, params);
+}
+
+// Handle POST requests (URL shortening)
+async function handlePostRequest(request, requestURL, pathname) {
+    // Only allow shortening via the /shorten endpoint
+    if (pathname !== "/shorten") {
+        return createJsonErrorResponse("Invalid API path", 404);
+    }
+
+    // Enforce Cloudflare Access / WARP for this API
+    if (!requireAccess(request)) {
+        return createJsonErrorResponse("You must use WARP to shorten the URL", 403);
+    }
+
+    let req;
+    try {
+        req = await request.json();
+        console.log(req["url"]);
+    } catch (error) {
+        console.error("Error parsing JSON:", error);
+        return createJsonErrorResponse("Invalid JSON format", 400);
+    }
+
+    // Validate URL
+    if (!req["url"]) {
+        return createJsonErrorResponse("URL is required", 400);
+    }
+
+    if (!await checkURL(req["url"])) {
+        return createJsonErrorResponse("Invalid URL format", 400);
+    }
+
+    let stat, random_key;
+    let customSlug = req["custom_slug"] || null;
+
+    // Validate custom slug if provided
+    if (customSlug) {
+        if (!config.worker.custom_link) {
+            return createJsonErrorResponse("Custom URLs are disabled", 400);
+        }
+
+        if (!await validateCustomSlug(customSlug)) {
+            return createJsonErrorResponse("Invalid custom slug format", 400);
+        }
+    }
+
+    if (config.worker.unique_link && !customSlug) {
+        let url_sha512 = await sha512(req["url"]);
+        let url_key = await is_url_exist(url_sha512);
+        if (url_key) {
+            random_key = url_key;
+        } else {
+            [stat, random_key] = await save_url(req["url"], customSlug);
+            if (typeof (stat) == "undefined") {
+                console.log(await LINKS.put(url_sha512, random_key));
+            }
+        }
+    } else {
+        [stat, random_key] = await save_url(req["url"], customSlug);
+    }
+
+    console.log(stat);
+
+    if (stat === "CUSTOM_SLUG_EXISTS") {
+        return createJsonErrorResponse("Custom slug already exists", 400);
+    }
+
+    if (stat === "KV_ERROR") {
+        return createJsonErrorResponse("Database error occurred", 500);
+    }
+
+    if (typeof (stat) == "undefined") {
+        const shortUrl = `${requestURL.origin}/${random_key}`;
+        return new Response(
+            JSON.stringify({ short_url: shortUrl }),
+            {
+                status: 201,
+                headers: {
+                    ...response_header,
+                    "content-type": "application/json;charset=UTF-8",
+                },
+            },
+        );
+    }
+
+    return createJsonErrorResponse("Error: Reach the KV write limitation", 500);
+}
+
+// Main request handler
+async function handleRequest(request) {
+    console.log(request);
+
+    const requestURL = new URL(request.url);
+    const pathname = requestURL.pathname;
+
+    // CORS preflight
+    if (request.method === "OPTIONS") {
+        return new Response("", {
+            status: 204,
+            headers: response_header,
+        });
+    }
+
+    if (request.method === "POST") {
+        return await handlePostRequest(request, requestURL, pathname);
+    }
+
+    // Handle GET requests (and any other methods)
+    return await handleGetRequest(requestURL);
+}
+
 addEventListener("fetch", async event => {
     event.respondWith(handleRequest(event.request));
 });
-
-// Check whether this request has passed Cloudflare Access (Zero Trust / WARP)
-function requireAccess(request) {
-    const jwt = request.headers.get("Cf-Access-Jwt-Assertion");
-    const email = request.headers.get("Cf-Access-Authenticated-User-Email");
-
-    console.log("Access headers:", {
-        jwtPresent: !!jwt,
-        email,
-    });
-
-    // Defensive check: if Access is misconfigured, block unauthenticated traffic
-    if (!jwt || !email) {
-        return false;
-    }
-
-    // If you want to restrict to specific accounts, you can check email here:
-    // const allowed = ["you@nycu.edu.tw", "xxx@example.com"];
-    // if (!allowed.includes(email)) return false;
-
-    return true;
-}
