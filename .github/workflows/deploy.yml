@@ -2,15 +2,15 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   pull_request:
-    branches: [ main, master ]
+    branches: [main, master]
   workflow_dispatch:
     inputs:
       custom_domain:
-        description: 'Custom domain for CNAME'
+        description: "Custom domain for CNAME"
         required: false
-        default: ''
+        default: ""
 
 permissions:
   contents: read
@@ -28,7 +28,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
 
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          pnpm install --frozen-lockfile
+
+      - name: Build React app
+        run: |
+          cd frontend
+          pnpm run build
 
       - name: Handle CNAME
         run: |
@@ -50,15 +66,13 @@ jobs:
             fi
           fi
 
-
-
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: 'docs'
+          path: "docs"
 
   deploy:
     runs-on: ubuntu-latest
