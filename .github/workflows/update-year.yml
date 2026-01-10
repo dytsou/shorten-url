@@ -1,0 +1,55 @@
+name: Update Copyright Year
+
+on:
+  schedule:
+    - cron: "0 0 1 1 *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-year:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get current year
+        id: year
+        run: echo "year=$(date +%Y)" >> $GITHUB_OUTPUT
+
+      - name: Update LICENSE year
+        run: |
+          CURRENT_YEAR=$(date +%Y)
+          sed -i "s/Copyright (c) [0-9]\{4\}/Copyright (c) $CURRENT_YEAR/" LICENSE
+          echo "Updated LICENSE to year $CURRENT_YEAR"
+
+      - name: Update footer year in docs/index.html
+        run: |
+          CURRENT_YEAR=$(date +%Y)
+          sed -i "s/© [0-9]\{4\}/© $CURRENT_YEAR/" docs/index.html
+          echo "Updated footer in docs/index.html to year $CURRENT_YEAR"
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "No changes detected"
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "Changes detected"
+            git diff
+          fi
+
+      - name: Commit and push changes
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add LICENSE docs/index.html
+          git commit -m "chore: update copyright year to $(date +%Y)"
+          git push
