@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+
+# Build output
+.wrangler/
+dist/
+build/
+coverage/
+.nyc_output/
+
+# Generated files
+*.log
+*.tsbuildinfo
+
+# Config files that shouldn't be formatted
+*.min.js
+*.min.css
+
+# Documentation that may have specific formatting
+CHANGELOG.md

@@ -10,6 +10,8 @@
     "preview": "wrangler dev",
     "publish:npmjs": "bash scripts/publish-npmjs.sh",
     "publish:github": "pnpm publish --registry https://npm.pkg.github.com",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
@@ -35,8 +37,9 @@
     "node": ">=18.0.0"
   },
   "devDependencies": {
-    "wrangler": "^4.58.0",
-    "vitest": "^4.0.16"
+    "prettier": "^3.7.4",
+    "vitest": "^4.0.16",
+    "wrangler": "^4.58.0"
   },
   "packageManager": "pnpm@10.22.0",
   "files": [
