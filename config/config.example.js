@@ -1,6 +1,6 @@
 /**
  * URL Shortener Configuration Example
- * 
+ *
  * Copy this file to config.js and modify the values according to your setup.
  * This file should be committed to your repository as a template.
  * The actual config.js file should be added to .gitignore to keep your secrets safe.
@@ -49,16 +49,28 @@ const config = {
     min_random_key_length: 6,
 
     // Characters used for random key generation (removed confusing characters)
-    random_chars: 'ABCDEFGHJKMNPQRSTWXYZabcdefhijkmnprstwxyz2345678',
+    random_chars: "ABCDEFGHJKMNPQRSTWXYZabcdefhijkmnprstwxyz2345678",
 
     // Reserved slugs that cannot be used as custom URLs
-    reserved_slugs: ['api', 'admin', 'www', 'mail', 'ftp', 'localhost', 'password', 'help', 'support', 'contact', 'about']
+    reserved_slugs: [
+      "api",
+      "admin",
+      "www",
+      "mail",
+      "ftp",
+      "localhost",
+      "password",
+      "help",
+      "support",
+      "contact",
+      "about",
+    ],
   },
 
   // KV Storage Configuration (Cloudflare Workers)
   storage: {
     // KV namespace binding name (must match wrangler.toml)
-    binding_name: "LINKS"
+    binding_name: "LINKS",
   },
 
   // Security Configuration
@@ -76,9 +88,9 @@ const config = {
     // Add domains you want to block from being shortened
     blocked_domains: [
       // "bit.ly",
-      // "tinyurl.com", 
+      // "tinyurl.com",
       // "t.co"
-    ]
+    ],
   },
 
   // Analytics Configuration (optional)
@@ -91,16 +103,16 @@ const config = {
     ga_tracking_id: "",
 
     // Custom analytics endpoint for tracking clicks
-    analytics_endpoint: ""
-  }
+    analytics_endpoint: "",
+  },
 };
 
 // Export for use in other files
-if (typeof module !== 'undefined' && module.exports) {
+if (typeof module !== "undefined" && module.exports) {
   module.exports = config;
 }
 
 // Make available globally for browser usage
-if (typeof window !== 'undefined') {
+if (typeof window !== "undefined") {
   window.APP_CONFIG = config;
 }

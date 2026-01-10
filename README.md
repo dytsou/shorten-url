@@ -44,11 +44,11 @@ Update the `config/config.js` file with your settings:
 
 ```javascript
 const config = {
-    frontend: {
-        // IMPORTANT: Update this to your GitHub Pages URL or custom domain
-        url: "https://yourusername.github.io/shorten-url/",
-    },
-    // ... other settings
+  frontend: {
+    // IMPORTANT: Update this to your GitHub Pages URL or custom domain
+    url: "https://yourusername.github.io/shorten-url/",
+  },
+  // ... other settings
 };
 ```
 
@@ -112,10 +112,10 @@ After deploying, update your `config/config.js` with the worker URL:
 
 ```javascript
 const config = {
-    frontend: {
-        url: "https://yourusername.github.io/shorten-url/",
-    },
-    // ... other settings
+  frontend: {
+    url: "https://yourusername.github.io/shorten-url/",
+  },
+  // ... other settings
 };
 ```
 
@@ -123,37 +123,37 @@ const config = {
 
 ### Frontend Configuration
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `frontend.url` | URL where your frontend is hosted | Required |
-| `frontend.displayDomain` | Domain shown in UI (null = auto-detect) | `null` |
-| `frontend.theme` | UI theme selection | `""` |
+| Option                   | Description                             | Default  |
+| ------------------------ | --------------------------------------- | -------- |
+| `frontend.url`           | URL where your frontend is hosted       | Required |
+| `frontend.displayDomain` | Domain shown in UI (null = auto-detect) | `null`   |
+| `frontend.theme`         | UI theme selection                      | `""`     |
 
 ### Worker Configuration
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `worker.no_ref` | Hide HTTP referrer header | `"off"` |
-| `worker.cors` | Enable CORS for API requests | `"on"` |
-| `worker.unique_link` | Same URL = same short link | `true` |
-| `worker.custom_link` | Allow custom slugs | `true` |
-| `worker.safe_browsing_api_key` | Google Safe Browsing API key | `""` |
-| `worker.min_random_key_length` | Minimum length for generated keys | `6` |
-| `worker.max_custom_slug_length` | Maximum length for custom slugs | `50` |
-| `worker.reserved_slugs` | List of reserved slugs | See config |
+| Option                          | Description                       | Default    |
+| ------------------------------- | --------------------------------- | ---------- |
+| `worker.no_ref`                 | Hide HTTP referrer header         | `"off"`    |
+| `worker.cors`                   | Enable CORS for API requests      | `"on"`     |
+| `worker.unique_link`            | Same URL = same short link        | `true`     |
+| `worker.custom_link`            | Allow custom slugs                | `true`     |
+| `worker.safe_browsing_api_key`  | Google Safe Browsing API key      | `""`       |
+| `worker.min_random_key_length`  | Minimum length for generated keys | `6`        |
+| `worker.max_custom_slug_length` | Maximum length for custom slugs   | `50`       |
+| `worker.reserved_slugs`         | List of reserved slugs            | See config |
 
 ### Security Configuration
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `security.rate_limit` | Requests per minute per IP | `10` |
-| `security.validate_urls` | Enable URL validation | `true` |
-| `security.blocked_domains` | List of blocked domains | `[]` |
+| Option                     | Description                | Default |
+| -------------------------- | -------------------------- | ------- |
+| `security.rate_limit`      | Requests per minute per IP | `10`    |
+| `security.validate_urls`   | Enable URL validation      | `true`  |
+| `security.blocked_domains` | List of blocked domains    | `[]`    |
 
 ### Storage Configuration
 
-| Option | Description | Default |
-|--------|-------------|---------|
+| Option                 | Description               | Default   |
+| ---------------------- | ------------------------- | --------- |
 | `storage.binding_name` | KV namespace binding name | `"LINKS"` |
 
 ## 🔧 Advanced Setup
@@ -216,8 +216,8 @@ The project includes comprehensive API documentation available at `/api` endpoin
 
 ```json
 {
-    "url": "https://example.com/very-long-url",
-    "custom_slug": "my-link" // optional
+  "url": "https://example.com/very-long-url",
+  "custom_slug": "my-link" // optional
 }
 ```
 
@@ -225,7 +225,7 @@ The project includes comprehensive API documentation available at `/api` endpoin
 
 ```json
 {
-    "short_url": "https://url.tsou.me/abc123"
+  "short_url": "https://url.tsou.me/abc123"
 }
 ```
 
@@ -233,8 +233,8 @@ The project includes comprehensive API documentation available at `/api` endpoin
 
 ```json
 {
-    "status": 400,
-    "message": "Invalid URL format"
+  "status": 400,
+  "message": "Invalid URL format"
 }
 ```
 
@@ -299,24 +299,29 @@ shorten-url/
 ### Common Issues
 
 **"Failed to copy" error:**
+
 - The app uses modern clipboard API with fallbacks
 - Ensure you're using HTTPS (required for clipboard access)
 
 **Worker deployment fails:**
+
 - Check your `wrangler.toml` configuration
 - Ensure KV namespace ID is correct
 - Verify you're logged into the correct Cloudflare account
 
 **Custom slugs not working:**
+
 - Check that `custom_link` is enabled in config
 - Verify slug meets validation requirements (alphanumeric, hyphens, underscores only)
 - Ensure slug is not in the reserved slugs list
 
 **Frontend not loading:**
+
 - Update `frontend.url` in your config to match your hosting URL
 - Ensure CORS is enabled in worker configuration
 
 **Rate limiting issues:**
+
 - Adjust `security.rate_limit` in your configuration
 - Consider implementing IP allowlisting for trusted sources
 

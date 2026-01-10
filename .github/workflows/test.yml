@@ -3,18 +3,18 @@ name: Test
 on:
   push:
     paths:
-      - 'src/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - 'vitest.config.js'
-      - 'tests/**'
+      - "src/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "vitest.config.js"
+      - "tests/**"
   pull_request:
     paths:
-      - 'src/**'
-      - 'package.json'
-      - 'pnpm-lock.yaml'
-      - 'vitest.config.js'
-      - 'tests/**'
+      - "src/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "vitest.config.js"
+      - "tests/**"
   workflow_dispatch:
 
 jobs:
@@ -29,7 +29,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Enable Corepack
         run: corepack enable
@@ -48,4 +48,3 @@ jobs:
 
       - name: Run tests
         run: pnpm test
-
