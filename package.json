@@ -1,6 +1,6 @@
 {
   "name": "@dytsou/shorten-url",
-  "version": "2.2.6",
+  "version": "2.2.7",
   "description": "A modern, fast URL shortener built with Cloudflare Workers and a responsive web interface",
   "type": "module",
   "main": "src/worker.js",
