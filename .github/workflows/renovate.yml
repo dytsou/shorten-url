@@ -1,0 +1,37 @@
+# Renovate – dependency updates via renovatebot/github-action
+#
+# The workflow (GitHub Actions) creates the PRs; commits are authored by dytsou
+# via gitAuthor in .github/renovate.json. Uses GITHUB_TOKEN so PRs show as from
+# github-actions[bot]. Note: PRs created with GITHUB_TOKEN may not trigger other
+# workflows (e.g. Test) on push; you can re-run them manually or use a PAT if needed.
+#
+# See: https://github.com/renovatebot/github-action
+name: Renovate
+
+on:
+  schedule:
+    # Weekly, same cadence as previous Dependabot setup
+    - cron: "0 9 * * 5"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  renovate:
+    name: Renovate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Self-hosted Renovate
+        uses: renovatebot/github-action@d65ef9e20512193cc070238b49c3873a361cd50c # v46.1.1
+        env:
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
+          RENOVATE_ONBOARDING: "false"
+          RENOVATE_REQUIRE_CONFIG: "optional"
+        with:
+          configurationFile: .github/renovate.json
+          token: ${{ secrets.GITHUB_TOKEN }}

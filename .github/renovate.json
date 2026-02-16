@@ -1,0 +1,26 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "branchPrefix": "renovate/",
+  "prConcurrentLimit": 10,
+  "commitMessagePrefix": "build(deps)",
+  "gitAuthor": "dytsou <d.y.tsou@gmail.com>",
+  "packageRules": [
+    {
+      "description": "Group npm dependency updates",
+      "matchManagers": ["npm"],
+      "groupName": "npm dependencies"
+    },
+    {
+      "description": "npm devDependencies commit prefix",
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["devDependencies"],
+      "commitMessagePrefix": "build(deps-dev)"
+    },
+    {
+      "description": "GitHub Actions commit prefix and grouping",
+      "matchManagers": ["github-actions"],
+      "commitMessagePrefix": "ci(deps)",
+      "groupName": "github-actions"
+    }
+  ]
+}
