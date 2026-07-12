@@ -1,173 +1,170 @@
+/**
+ * URL Shortener — Cloudflare Worker (template)
+ *
+ * Copy this file to `src/worker.js` and wire in your config (see README).
+ * Service-worker syntax. Requires a KV namespace bound as `LINKS`.
+ *
+ * Routes:
+ *   OPTIONS *                -> CORS preflight
+ *   POST    /                -> create short URL (protected by Cloudflare Access / WARP)
+ *   GET     /                -> serve the shortener frontend
+ *   GET     /<key>           -> redirect a stored short link
+ */
+
+// ============================================================================
+// Configuration
+// ============================================================================
+
 let config;
 
 try {
-  // In a real deployment, you might want to fetch this from KV storage
-  // or use environment variables for sensitive data
   if (typeof importConfig !== "undefined") {
     config = { ...defaultConfig, ...importConfig };
+  } else {
+    throw new Error(
+      "Worker config is missing. Copy config/config.example.js to config/config.js and import it when building worker.js."
+    );
   }
-} catch (e) {
-  console.log("Error importing config");
-  throw e;
-  exit();
+} catch (error) {
+  console.error("Failed to load worker config:", error);
+  throw error;
 }
 
-let response_header = {
-  "content-type": "text/html;charset=UTF-8",
-};
+const SLUG_PATTERN = /^[a-zA-Z0-9\-_]+$/;
+const URL_PATTERN = /http(s)?:\/\/([\w-]+\.)+[\w-]+(\/[\w- .\/?%&=]*)?/;
 
-if (config.worker.cors == "on") {
-  response_header = {
-    "content-type": "text/html;charset=UTF-8",
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "POST",
+/** Resolve hosted page URLs from `config.frontend`. */
+function getEndpoints() {
+  // Error/interstitial HTML files may live at the frontend root or a separate Pages path.
+  const pagesBase = config.frontend.pagesBase || config.frontend.url;
+
+  return {
+    shortenPage: config.frontend.url,
+    notFoundPage: new URL("404.html", pagesBase).href,
+    errorPage: new URL("error.html", pagesBase).href,
+    safeBrowsingWarning: new URL("safe-browsing-warning.html", pagesBase).href,
+    noRefPage: new URL("no-ref-page.html", pagesBase).href,
+    safeBrowsing: "https://safebrowsing.googleapis.com/v4/threatMatches:find",
   };
 }
 
-// Check whether this request has passed Cloudflare Access (Zero Trust / WARP)
-function requireAccess(request) {
-  const jwt = request.headers.get("Cf-Access-Jwt-Assertion");
-  const email = request.headers.get("Cf-Access-Authenticated-User-Email");
+// ============================================================================
+// Response header helpers
+// ============================================================================
 
-  console.log("Access headers:", {
-    jwtPresent: !!jwt,
-    email,
-  });
-
-  // Defensive check: if Access is misconfigured, block unauthenticated traffic
-  if (!jwt || !email) {
-    return false;
-  }
-
-  // If you want to restrict to specific accounts, you can check email here:
-  // const allowed = ["you@nycu.edu.tw", "xxx@example.com"];
-  // if (!allowed.includes(email)) return false;
-
-  return true;
+function corsHeaders() {
+  if (config.worker.cors !== "on") return {};
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+  };
 }
 
-// Create JSON error response
-function createJsonErrorResponse(message, code) {
-  return new Response(JSON.stringify({ status: code, message: message }), {
-    status: code,
-    headers: {
-      ...response_header,
-      "content-type": "application/json;charset=UTF-8",
-    },
-  });
+function htmlHeaders() {
+  return { "content-type": "text/html;charset=UTF-8", ...corsHeaders() };
 }
 
-// Generate random string for short URLs
-async function randomString(len) {
-  len = len || config.worker.min_random_key_length;
-  let $chars = config.worker.random_chars; // Configurable character set
-  let maxPos = $chars.length;
+function jsonHeaders() {
+  return { "content-type": "application/json;charset=UTF-8", ...corsHeaders() };
+}
+
+// ============================================================================
+// Utilities
+// ============================================================================
+
+function randomString(len = config.worker.min_random_key_length) {
+  const chars = config.worker.random_chars;
   let result = "";
-  for (i = 0; i < len; i++) {
-    result += $chars.charAt(Math.floor(Math.random() * maxPos));
+  for (let i = 0; i < len; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return result;
 }
 
-// Generate SHA512 hash for URL
-async function sha512(url) {
-  url = new TextEncoder().encode(url);
+async function sha512(text) {
+  const data = new TextEncoder().encode(text);
+  const digest = await crypto.subtle.digest("SHA-512", data);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
 
-  const url_digest = await crypto.subtle.digest(
-    {
-      name: "SHA-512",
-    },
-    url // The data you want to hash as an ArrayBuffer
+function isValidUrl(url) {
+  return typeof url === "string" && url[0] === "h" && URL_PATTERN.test(url);
+}
+
+function isValidCustomSlug(slug) {
+  return (
+    SLUG_PATTERN.test(slug) &&
+    slug.length >= 1 &&
+    slug.length <= config.worker.max_custom_slug_length &&
+    !config.worker.reserved_slugs.includes(slug.toLowerCase())
   );
-  const hashArray = Array.from(new Uint8Array(url_digest)); // convert buffer to byte array
-  const hashHex = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-  return hashHex;
 }
 
-// Validate URL format
-async function checkURL(URL) {
-  let str = URL;
-  let Expression = /http(s)?:\/\/([\w-]+\.)+[\w-]+(\/[\w- .\/?%&=]*)?/;
-  let objExp = new RegExp(Expression);
-  if (objExp.test(str) == true) {
-    if (str[0] == "h") return true;
-    else return false;
-  } else {
-    return false;
-  }
+function wantsJson(request) {
+  const accept = request.headers.get("accept") || "";
+  const contentType = request.headers.get("content-type") || "";
+  return accept.includes("application/json") || contentType.includes("application/json");
 }
 
-// Validate custom slug format
-async function validateCustomSlug(slug) {
-  // Check format - only allow letters, numbers, hyphens, and underscores
-  const slugRegex = /^[a-zA-Z0-9\-_]+$/;
-  if (!slugRegex.test(slug)) {
-    return false;
-  }
+// ============================================================================
+// KV access
+// ============================================================================
 
-  // Check length using config
-  if (slug.length < 1 || slug.length > config.worker.max_custom_slug_length) {
-    return false;
-  }
-
-  // Check reserved words from config
-  if (config.worker.reserved_slugs.includes(slug.toLowerCase())) {
-    return false;
-  }
-
-  return true;
-}
-
-// Save URL with random or custom key
-async function save_url(URL, customSlug = null) {
+/**
+ * Store a URL under a random or custom key.
+ * @returns {Promise<[errorCode: string|undefined, key: string|null]>}
+ */
+async function saveUrl(url, customSlug = null) {
   try {
-    let random_key;
+    const key = customSlug || randomString();
+    const existing = await LINKS.get(key);
 
+    if (existing === null) {
+      await LINKS.put(key, url);
+      return [undefined, key];
+    }
     if (customSlug) {
-      // Use custom slug if provided
-      random_key = customSlug;
-    } else {
-      // Generate random key
-      random_key = await randomString();
-    }
-
-    let is_exist = await LINKS.get(random_key);
-    console.log(is_exist);
-
-    if (is_exist == null) {
-      await LINKS.put(random_key, URL);
-      return [undefined, random_key];
-    } else if (customSlug) {
-      // If custom slug already exists, return error
       return ["CUSTOM_SLUG_EXISTS", null];
-    } else {
-      // If random key exists, try again
-      return save_url(URL);
     }
+    return saveUrl(url);
   } catch (error) {
-    console.error("Error in save_url:", error);
+    console.error("saveUrl failed:", error);
     return ["KV_ERROR", null];
   }
 }
 
-// Check if URL exists in database
-async function is_url_exist(url_sha512) {
-  let is_exist = await LINKS.get(url_sha512);
-  console.log(is_exist);
-  if (is_exist == null) {
-    return false;
-  } else {
-    return is_exist;
-  }
+async function findUrlKeyByHash(urlHash) {
+  return (await LINKS.get(urlHash)) || null;
 }
 
-// Check URL safety using Google Safe Browsing API
-async function is_url_safe(url) {
-  let raw = JSON.stringify({
-    client: {
-      clientId: "Url-Shorten-Worker",
-      clientVersion: "1.0.7",
-    },
+// ============================================================================
+// External page / safety helpers
+// ============================================================================
+
+async function fetchHostedPage(url, status = 200) {
+  const upstream = await fetch(url, { redirect: "follow" });
+  return new Response(await upstream.text(), {
+    status,
+    headers: { "content-type": "text/html;charset=UTF-8" },
+  });
+}
+
+async function fetchInterstitial(url, destination) {
+  const upstream = await fetch(url);
+  const html = (await upstream.text()).replace(/{Replace}/gm, destination);
+  return new Response(html, { headers: { "content-type": "text/html;charset=UTF-8" } });
+}
+
+function notFound() {
+  return fetchHostedPage(getEndpoints().notFoundPage, 404);
+}
+
+async function isUrlSafe(url) {
+  const endpoints = getEndpoints();
+  const body = JSON.stringify({
+    client: { clientId: "Url-Shorten-Worker", clientVersion: "1.0.7" },
     threatInfo: {
       threatTypes: [
         "MALWARE",
@@ -177,200 +174,155 @@ async function is_url_safe(url) {
       ],
       platformTypes: ["ANY_PLATFORM"],
       threatEntryTypes: ["URL"],
-      threatEntries: [{ url: url }],
+      threatEntries: [{ url }],
     },
   });
 
-  let requestOptions = {
-    method: "POST",
-    body: raw,
-    redirect: "follow",
-  };
-
-  let result = await fetch(
-    "https://safebrowsing.googleapis.com/v4/threatMatches:find?key=" +
-      config.worker.safe_browsing_api_key,
-    requestOptions
+  const response = await fetch(
+    `${endpoints.safeBrowsing}?key=${config.worker.safe_browsing_api_key}`,
+    { method: "POST", body, redirect: "follow" }
   );
-  result = await result.json();
-  console.log(result);
-  if (Object.keys(result).length === 0) {
-    return true;
-  } else {
-    return false;
-  }
+  const result = await response.json();
+  return Object.keys(result).length === 0;
 }
 
-// Handle short URL redirect
-async function handleShortUrlRedirect(path, params) {
-  if (!path) {
-    const html404 = await fetch("https://dytsou.github.io/404.html");
-    return new Response(await html404.text(), {
-      headers: {
-        "content-type": "text/html;charset=UTF-8",
-      },
-      status: 404,
-    });
-  }
+// ============================================================================
+// Error responses
+// ============================================================================
 
-  const value = await LINKS.get(path);
-  let location;
-
-  if (params) {
-    location = value + params;
-  } else {
-    location = value;
-  }
-  console.log(value);
-
-  if (location) {
-    if (config.worker.safe_browsing_api_key) {
-      if (!(await is_url_safe(location))) {
-        let warning_page = safeBrowsingWarning.replace(/{Replace}/gm, location);
-        return new Response(warning_page, {
-          headers: {
-            "content-type": "text/html;charset=UTF-8",
-          },
-        });
-      }
-    }
-
-    if (config.worker.no_ref == "on") {
-      let no_ref = noRefPage.replace(/{Replace}/gm, location);
-      return new Response(no_ref, {
-        headers: {
-          "content-type": "text/html;charset=UTF-8",
-        },
-      });
-    } else {
-      return Response.redirect(location, 302);
-    }
-  }
-
-  // If request not in kv, return 404
-  const html404 = await fetch("https://dytsou.github.io/404.html");
-  return new Response(await html404.text(), {
-    headers: {
-      "content-type": "text/html;charset=UTF-8",
-    },
-    status: 404,
-  });
+function jsonResponse(payload, status) {
+  return new Response(JSON.stringify(payload), { status, headers: jsonHeaders() });
 }
 
-// Handle GET requests
-async function handleGetRequest(requestURL) {
-  const path = requestURL.pathname.split("/")[1];
-  const params = requestURL.search;
-  console.log(path);
-  return await handleShortUrlRedirect(path, params);
+async function errorResponse(message, code, request) {
+  if (wantsJson(request)) {
+    return jsonResponse({ status: code, message }, code);
+  }
+  const endpoints = getEndpoints();
+  const url = `${endpoints.errorPage}?message=${encodeURIComponent(message)}&code=${encodeURIComponent(code)}`;
+  return fetchHostedPage(url, code);
 }
 
-// Handle POST requests (URL shortening)
-async function handlePostRequest(request, requestURL, pathname) {
-  // Only allow shortening via the /shorten endpoint
-  if (pathname !== "/shorten") {
-    return createJsonErrorResponse("Invalid API path", 404);
+// ============================================================================
+// Access control (Cloudflare Zero Trust / WARP)
+// ============================================================================
+
+function hasPassedAccess(request) {
+  const jwt = request.headers.get("Cf-Access-Jwt-Assertion");
+  const email = request.headers.get("Cf-Access-Authenticated-User-Email");
+  if (!jwt || !email) return false;
+
+  // To restrict to specific accounts, gate on `email` here.
+  return true;
+}
+
+// ============================================================================
+// Route handlers
+// ============================================================================
+
+async function handleShorten(request, requestURL, pathname) {
+  // Only allow shortening via the root endpoint.
+  if (pathname !== "/") {
+    return jsonResponse({ status: 404, message: "Invalid API path" }, 404);
   }
 
-  // Enforce Cloudflare Access / WARP for this API
-  if (!requireAccess(request)) {
-    return createJsonErrorResponse("You must use WARP to shorten the URL", 403);
+  if (!hasPassedAccess(request)) {
+    return errorResponse("You must use WARP to shorten the URL", 403, request);
   }
 
-  let req;
+  let body;
   try {
-    req = await request.json();
-    console.log(req["url"]);
+    body = await request.json();
   } catch (error) {
-    console.error("Error parsing JSON:", error);
-    return createJsonErrorResponse("Invalid JSON format", 400);
+    console.error("Invalid JSON body:", error);
+    return errorResponse("Invalid JSON format", 400, request);
   }
 
-  // Validate URL
-  if (!req["url"]) {
-    return createJsonErrorResponse("URL is required", 400);
-  }
+  const longUrl = body.url;
+  if (!longUrl) return errorResponse("URL is required", 400, request);
+  if (!isValidUrl(longUrl)) return errorResponse("Invalid URL format", 400, request);
 
-  if (!(await checkURL(req["url"]))) {
-    return createJsonErrorResponse("Invalid URL format", 400);
-  }
-
-  let stat, random_key;
-  let customSlug = req["custom_slug"] || null;
-
-  // Validate custom slug if provided
+  const customSlug = body.custom_slug || null;
   if (customSlug) {
     if (!config.worker.custom_link) {
-      return createJsonErrorResponse("Custom URLs are disabled", 400);
+      return errorResponse("Custom URLs are disabled", 400, request);
     }
-
-    if (!(await validateCustomSlug(customSlug))) {
-      return createJsonErrorResponse("Invalid custom slug format", 400);
+    if (!isValidCustomSlug(customSlug)) {
+      return errorResponse("Invalid custom slug format", 400, request);
     }
   }
+
+  let errorCode;
+  let key;
 
   if (config.worker.unique_link && !customSlug) {
-    let url_sha512 = await sha512(req["url"]);
-    let url_key = await is_url_exist(url_sha512);
-    if (url_key) {
-      random_key = url_key;
+    const urlHash = await sha512(longUrl);
+    const existingKey = await findUrlKeyByHash(urlHash);
+    if (existingKey) {
+      key = existingKey;
     } else {
-      [stat, random_key] = await save_url(req["url"], customSlug);
-      if (typeof stat == "undefined") {
-        console.log(await LINKS.put(url_sha512, random_key));
-      }
+      [errorCode, key] = await saveUrl(longUrl);
+      if (errorCode === undefined) await LINKS.put(urlHash, key);
     }
   } else {
-    [stat, random_key] = await save_url(req["url"], customSlug);
+    [errorCode, key] = await saveUrl(longUrl, customSlug);
   }
 
-  console.log(stat);
-
-  if (stat === "CUSTOM_SLUG_EXISTS") {
-    return createJsonErrorResponse("Custom slug already exists", 400);
+  if (errorCode === "CUSTOM_SLUG_EXISTS") {
+    return errorResponse("Custom slug already exists", 400, request);
   }
-
-  if (stat === "KV_ERROR") {
-    return createJsonErrorResponse("Database error occurred", 500);
+  if (errorCode === "KV_ERROR") {
+    return errorResponse("Database error occurred", 500, request);
   }
-
-  if (typeof stat == "undefined") {
-    const shortUrl = `${requestURL.origin}/${random_key}`;
-    return new Response(JSON.stringify({ short_url: shortUrl }), {
-      status: 201,
-      headers: {
-        ...response_header,
-        "content-type": "application/json;charset=UTF-8",
-      },
-    });
+  if (errorCode === undefined) {
+    return jsonResponse({ short_url: `${requestURL.origin}/${key}` }, 201);
   }
-
-  return createJsonErrorResponse("Error: Reach the KV write limitation", 500);
+  return errorResponse("Error: Reach the KV write limitation", 500, request);
 }
 
-// Main request handler
+async function handleShortUrlRedirect(path, params) {
+  if (!path) return notFound();
+
+  const value = await LINKS.get(path);
+  if (!value) return notFound();
+
+  const destination = params ? value + params : value;
+  const endpoints = getEndpoints();
+
+  if (config.worker.safe_browsing_api_key && !(await isUrlSafe(destination))) {
+    return fetchInterstitial(endpoints.safeBrowsingWarning, destination);
+  }
+  if (config.worker.no_ref === "on") {
+    return fetchInterstitial(endpoints.noRefPage, destination);
+  }
+  return Response.redirect(destination, 302);
+}
+
+async function handleGet(path, params) {
+  const endpoints = getEndpoints();
+
+  if (path === "") return fetchHostedPage(endpoints.shortenPage);
+  return handleShortUrlRedirect(path, params);
+}
+
+// ============================================================================
+// Router
+// ============================================================================
+
 async function handleRequest(request) {
-  console.log(request);
-
   const requestURL = new URL(request.url);
-  const pathname = requestURL.pathname;
+  const [, path] = requestURL.pathname.split("/");
+  const params = requestURL.search;
 
-  // CORS preflight
   if (request.method === "OPTIONS") {
-    return new Response("", {
-      status: 204,
-      headers: response_header,
-    });
+    return new Response(null, { status: 204, headers: htmlHeaders() });
   }
-
   if (request.method === "POST") {
-    return await handlePostRequest(request, requestURL, pathname);
+    return handleShorten(request, requestURL, requestURL.pathname);
   }
-
-  // Handle GET requests (and any other methods)
-  return await handleGetRequest(requestURL);
+  return handleGet(path, params);
 }
 
-addEventListener("fetch", async (event) => {
+addEventListener("fetch", (event) => {
   event.respondWith(handleRequest(event.request));
 });
