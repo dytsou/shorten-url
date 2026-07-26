@@ -81,14 +81,14 @@ jobs:
       - name: Install dependencies
         if: steps.check-npmjs.outputs.exists == 'false' || steps.check-github.outputs.exists == 'false'
         run: |
-          pnpm install --frozen-lockfile
+          pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Verify package
         if: steps.check-npmjs.outputs.exists == 'false' || steps.check-github.outputs.exists == 'false'
         run: |
           # pnpm doesn't support --dry-run, so we pack and then remove the tarball
           pnpm pack
-          rm -f *.tgz || true
+          rm -f ./*.tgz || true
 
       # 1) Publish to npmjs
       - name: Publish to npmjs

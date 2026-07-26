@@ -10,18 +10,18 @@ describe("URL Validation", () => {
       "https://example.com/path?query=value",
     ];
 
-    const urlRegex = /http(s)?:\/\/([\w-]+\.)+[\w-]+(\/[\w- .\/?%&=]*)?/;
+    const urlRegex = /http(s)?:\/\/([\w-]+\.)+[\w-]+(\/[\w- ./?%&=]*)?/;
 
     validUrls.forEach((url) => {
       expect(urlRegex.test(url)).toBe(true);
-      expect(url[0] === "h").toBe(true);
+      expect(url[0]).toBe("h");
     });
   });
 
   it("should reject invalid URLs", () => {
     const invalidUrls = ["not-a-url", "ftp://example.com", "example.com", ""];
 
-    const urlRegex = /http(s)?:\/\/([\w-]+\.)+[\w-]+(\/[\w- .\/?%&=]*)?/;
+    const urlRegex = /http(s)?:\/\/([\w-]+\.)+[\w-]+(\/[\w- ./?%&=]*)?/;
 
     invalidUrls.forEach((url) => {
       const isValid = urlRegex.test(url) && url[0] === "h";
@@ -89,7 +89,7 @@ describe("Random String Generation", () => {
       for (let i = 0; i < len; i++) {
         result += chars.charAt(Math.floor(Math.random() * chars.length));
       }
-      expect(result.length).toBe(len);
+      expect(result).toHaveLength(len);
       // All characters should be from the allowed set
       expect([...result].every((char) => chars.includes(char))).toBe(true);
     });

@@ -21,7 +21,7 @@ try {
   if (typeof importConfig !== "undefined") {
     config = { ...defaultConfig, ...importConfig };
   } else {
-    throw new Error(
+    throw new TypeError(
       "Worker config is missing. Copy config/config.example.js to config/config.js and import it when building worker.js."
     );
   }
@@ -31,7 +31,7 @@ try {
 }
 
 const SLUG_PATTERN = /^[a-zA-Z0-9\-_]+$/;
-const URL_PATTERN = /http(s)?:\/\/([\w-]+\.)+[\w-]+(\/[\w- .\/?%&=]*)?/;
+const URL_PATTERN = /http(s)?:\/\/([\w-]+\.)+[\w-]+(\/[\w- ./?%&=]*)?/;
 
 /** Resolve hosted page URLs from `config.frontend`. */
 function getEndpoints() {
@@ -74,9 +74,11 @@ function jsonHeaders() {
 
 function randomString(len = config.worker.min_random_key_length) {
   const chars = config.worker.random_chars;
+  const bytes = new Uint8Array(len);
+  crypto.getRandomValues(bytes);
   let result = "";
   for (let i = 0; i < len; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
+    result += chars.charAt(bytes[i] % chars.length);
   }
   return result;
 }
@@ -90,7 +92,7 @@ async function sha512(text) {
 }
 
 function isValidUrl(url) {
-  return typeof url === "string" && url[0] === "h" && URL_PATTERN.test(url);
+  return typeof url === "string" && url.startsWith("h") && URL_PATTERN.test(url);
 }
 
 function isValidCustomSlug(slug) {
@@ -210,15 +212,56 @@ async function errorResponse(message, code, request) {
 function hasPassedAccess(request) {
   const jwt = request.headers.get("Cf-Access-Jwt-Assertion");
   const email = request.headers.get("Cf-Access-Authenticated-User-Email");
-  if (!jwt || !email) return false;
-
   // To restrict to specific accounts, gate on `email` here.
-  return true;
+  return Boolean(jwt && email);
 }
 
 // ============================================================================
 // Route handlers
 // ============================================================================
+
+async function resolveShortKey(longUrl, customSlug) {
+  if (config.worker.unique_link && !customSlug) {
+    const urlHash = await sha512(longUrl);
+    const existingKey = await findUrlKeyByHash(urlHash);
+    if (existingKey) {
+      return [undefined, existingKey];
+    }
+    const [errorCode, key] = await saveUrl(longUrl);
+    if (errorCode === undefined) await LINKS.put(urlHash, key);
+    return [errorCode, key];
+  }
+  return saveUrl(longUrl, customSlug);
+}
+
+function respondToSaveError(errorCode, request) {
+  if (errorCode === "CUSTOM_SLUG_EXISTS") {
+    return errorResponse("Custom slug already exists", 400, request);
+  }
+  if (errorCode === "KV_ERROR") {
+    return errorResponse("Database error occurred", 500, request);
+  }
+  return errorResponse("Error: Reach the KV write limitation", 500, request);
+}
+
+async function validateShortenPayload(body, request) {
+  const longUrl = body.url;
+  if (!longUrl) return { error: await errorResponse("URL is required", 400, request) };
+  if (!isValidUrl(longUrl)) {
+    return { error: await errorResponse("Invalid URL format", 400, request) };
+  }
+
+  const customSlug = body.custom_slug || null;
+  if (!customSlug) return { longUrl, customSlug: null };
+
+  if (!config.worker.custom_link) {
+    return { error: await errorResponse("Custom URLs are disabled", 400, request) };
+  }
+  if (!isValidCustomSlug(customSlug)) {
+    return { error: await errorResponse("Invalid custom slug format", 400, request) };
+  }
+  return { longUrl, customSlug };
+}
 
 async function handleShorten(request, requestURL, pathname) {
   // Only allow shortening via the root endpoint.
@@ -238,46 +281,14 @@ async function handleShorten(request, requestURL, pathname) {
     return errorResponse("Invalid JSON format", 400, request);
   }
 
-  const longUrl = body.url;
-  if (!longUrl) return errorResponse("URL is required", 400, request);
-  if (!isValidUrl(longUrl)) return errorResponse("Invalid URL format", 400, request);
+  const validated = await validateShortenPayload(body, request);
+  if (validated.error) return validated.error;
 
-  const customSlug = body.custom_slug || null;
-  if (customSlug) {
-    if (!config.worker.custom_link) {
-      return errorResponse("Custom URLs are disabled", 400, request);
-    }
-    if (!isValidCustomSlug(customSlug)) {
-      return errorResponse("Invalid custom slug format", 400, request);
-    }
-  }
-
-  let errorCode;
-  let key;
-
-  if (config.worker.unique_link && !customSlug) {
-    const urlHash = await sha512(longUrl);
-    const existingKey = await findUrlKeyByHash(urlHash);
-    if (existingKey) {
-      key = existingKey;
-    } else {
-      [errorCode, key] = await saveUrl(longUrl);
-      if (errorCode === undefined) await LINKS.put(urlHash, key);
-    }
-  } else {
-    [errorCode, key] = await saveUrl(longUrl, customSlug);
-  }
-
-  if (errorCode === "CUSTOM_SLUG_EXISTS") {
-    return errorResponse("Custom slug already exists", 400, request);
-  }
-  if (errorCode === "KV_ERROR") {
-    return errorResponse("Database error occurred", 500, request);
-  }
+  const [errorCode, key] = await resolveShortKey(validated.longUrl, validated.customSlug);
   if (errorCode === undefined) {
     return jsonResponse({ short_url: `${requestURL.origin}/${key}` }, 201);
   }
-  return errorResponse("Error: Reach the KV write limitation", 500, request);
+  return respondToSaveError(errorCode, request);
 }
 
 async function handleShortUrlRedirect(path, params) {
