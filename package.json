@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "logs": "wrangler tail",
     "preview": "wrangler dev",
     "publish:npmjs": "pnpm publish --registry https://registry.npmjs.org",
     "publish:github": "pnpm publish --registry https://npm.pkg.github.com",
@@ -45,6 +46,7 @@
   "files": [
     "src/worker.js",
     "src/worker.example.js",
+    "src/lib/",
     "config/",
     "docs/",
     "README.md",

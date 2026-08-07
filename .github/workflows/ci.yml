@@ -52,6 +52,7 @@ jobs:
           # Check that required files exist
           test -f package.json || (echo "package.json missing" && exit 1)
           test -f src/worker.example.js || (echo "src/worker.example.js missing" && exit 1)
+          test -d src/lib || (echo "src/lib missing" && exit 1)
           test -f README.md || (echo "README.md missing" && exit 1)
           echo "Package structure verified ✓"
 
