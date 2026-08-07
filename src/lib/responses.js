@@ -1,5 +1,19 @@
 import { wantsJson } from "./validate.js";
 
+async function fetchHostedPage(url, status = 200) {
+  const upstream = await fetch(url, { redirect: "follow" });
+  return new Response(await upstream.text(), {
+    status,
+    headers: { "content-type": "text/html;charset=UTF-8" },
+  });
+}
+
+async function fetchInterstitial(url, destination) {
+  const upstream = await fetch(url);
+  const html = (await upstream.text()).replace(/{Replace}/gm, destination);
+  return new Response(html, { headers: { "content-type": "text/html;charset=UTF-8" } });
+}
+
 export function createResponses({ worker, endpoints }) {
   function corsHeaders() {
     if (worker.cors !== "on") return {};
@@ -19,20 +33,6 @@ export function createResponses({ worker, endpoints }) {
 
   function jsonResponse(payload, status) {
     return new Response(JSON.stringify(payload), { status, headers: jsonHeaders() });
-  }
-
-  async function fetchHostedPage(url, status = 200) {
-    const upstream = await fetch(url, { redirect: "follow" });
-    return new Response(await upstream.text(), {
-      status,
-      headers: { "content-type": "text/html;charset=UTF-8" },
-    });
-  }
-
-  async function fetchInterstitial(url, destination) {
-    const upstream = await fetch(url);
-    const html = (await upstream.text()).replace(/{Replace}/gm, destination);
-    return new Response(html, { headers: { "content-type": "text/html;charset=UTF-8" } });
   }
 
   async function errorResponse(message, code, request) {

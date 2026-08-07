@@ -8,6 +8,7 @@ import { isValidCustomSlug, isValidUrl } from "./validate.js";
 export function createShortener({ worker, endpoints, kv }) {
   const responses = createResponses({ worker, endpoints });
   const kvStore = createKvStore({ worker, kv });
+  const reservedSlugSet = new Set(worker.reserved_slugs.map((s) => s.toLowerCase()));
   const { jsonResponse, fetchInterstitial, errorResponse, notFound } = responses;
   const { resolveShortKey } = kvStore;
 
@@ -34,7 +35,7 @@ export function createShortener({ worker, endpoints, kv }) {
     if (!worker.custom_link) {
       return { error: await errorResponse("Custom URLs are disabled", 400, request) };
     }
-    if (!isValidCustomSlug(customSlug, worker)) {
+    if (!isValidCustomSlug(customSlug, worker, reservedSlugSet)) {
       return { error: await errorResponse("Invalid custom slug format", 400, request) };
     }
     return { longUrl, customSlug };
@@ -48,7 +49,9 @@ export function createShortener({ worker, endpoints, kv }) {
     return traceSpan("shorten", async (span) => {
       if (span.isTraced) span.setAttribute("api.path", apiPath);
 
-      if (!allowedApiPaths.includes(apiPath)) {
+      const allowedPaths =
+        allowedApiPaths instanceof Set ? allowedApiPaths : new Set(allowedApiPaths);
+      if (!allowedPaths.has(apiPath)) {
         return jsonResponse({ status: 404, message: "Invalid API path" }, 404);
       }
 

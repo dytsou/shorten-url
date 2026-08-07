@@ -1,5 +1,4 @@
-import { randomString } from "./crypto.js";
-import { sha512 } from "./crypto.js";
+import { randomString, sha512 } from "./crypto.js";
 import { logError, traceSpan } from "./observability.js";
 
 export function createKvStore({ worker, kv }) {

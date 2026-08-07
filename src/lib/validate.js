@@ -4,12 +4,16 @@ export function isValidUrl(url) {
   return typeof url === "string" && url.startsWith("h") && URL_PATTERN.test(url);
 }
 
-export function isValidCustomSlug(slug, worker) {
+export function isValidCustomSlug(slug, worker, reservedSlugs = worker.reserved_slugs) {
+  const reserved =
+    reservedSlugs instanceof Set
+      ? reservedSlugs
+      : new Set(reservedSlugs.map((s) => s.toLowerCase()));
   return (
     SLUG_PATTERN.test(slug) &&
     slug.length >= 1 &&
     slug.length <= worker.max_custom_slug_length &&
-    !worker.reserved_slugs.includes(slug.toLowerCase())
+    !reserved.has(slug.toLowerCase())
   );
 }
 

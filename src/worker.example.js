@@ -38,7 +38,7 @@ function getEndpoints() {
   return endpointsFromFrontend(config.frontend);
 }
 
-export default withFetchObservability(async (request, env) => {
+async function exampleFetchHandler(request, env) {
   const shortener = createShortener({
     worker: config.worker,
     endpoints: getEndpoints(),
@@ -60,4 +60,6 @@ export default withFetchObservability(async (request, env) => {
   }
   if (!path) return shortener.fetchHostedPage(getEndpoints().shortenPage);
   return shortener.handleShortUrlRedirect(path, params);
-});
+}
+
+export default withFetchObservability(exampleFetchHandler);

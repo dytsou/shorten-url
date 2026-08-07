@@ -10,65 +10,55 @@ const workerConfig = {
   reserved_slugs: ["api", "admin", "www", "mail", "ftp", "localhost", "password"],
 };
 
+const allowedChars = new Set(workerConfig.random_chars);
+
 describe("URL Validation", () => {
-  it("should validate correct URLs", () => {
-    const validUrls = [
-      "https://example.com",
-      "http://example.com",
-      "https://www.example.com/path",
-      "https://example.com/path?query=value",
-    ];
-
-    validUrls.forEach((url) => {
-      expect(isValidUrl(url)).toBe(true);
-      expect(URL_PATTERN.test(url)).toBe(true);
-    });
+  it.each([
+    "https://example.com",
+    "http://example.com",
+    "https://www.example.com/path",
+    "https://example.com/path?query=value",
+  ])("accepts valid URL %s", (url) => {
+    expect(isValidUrl(url)).toBe(true);
+    expect(URL_PATTERN.test(url)).toBe(true);
   });
 
-  it("should reject invalid URLs", () => {
-    const invalidUrls = ["not-a-url", "ftp://example.com", "example.com", ""];
-
-    invalidUrls.forEach((url) => {
+  it.each(["not-a-url", "ftp://example.com", "example.com", ""])(
+    "rejects invalid URL %s",
+    (url) => {
       expect(isValidUrl(url)).toBe(false);
-    });
-  });
+    }
+  );
 });
 
 describe("Custom Slug Validation", () => {
-  it("should validate correct slug formats", () => {
-    const validSlugs = ["my-link", "my_link", "myLink123", "a", "a".repeat(50)];
-
-    validSlugs.forEach((slug) => {
+  it.each(["my-link", "my_link", "myLink123", "a", "a".repeat(50)])(
+    "accepts valid slug %s",
+    (slug) => {
       expect(isValidCustomSlug(slug, workerConfig)).toBe(true);
       expect(SLUG_PATTERN.test(slug)).toBe(true);
-    });
-  });
+    }
+  );
 
-  it("should reject invalid slug formats", () => {
-    const invalidSlugs = ["my link", "my@link", "my.link", "", "a".repeat(51), "api", "ADMIN"];
-
-    invalidSlugs.forEach((slug) => {
+  it.each(["my link", "my@link", "my.link", "", "a".repeat(51), "api", "ADMIN"])(
+    "rejects invalid slug %s",
+    (slug) => {
       expect(isValidCustomSlug(slug, workerConfig)).toBe(false);
-    });
-  });
+    }
+  );
 });
 
 describe("Random String Generation", () => {
-  it("should generate strings of correct length", () => {
-    const testLengths = [6, 8, 10, 20];
-
-    testLengths.forEach((len) => {
-      const result = randomString(workerConfig, len);
-      expect(result).toHaveLength(len);
-      expect([...result].every((char) => workerConfig.random_chars.includes(char))).toBe(true);
-    });
+  it.each([6, 8, 10, 20])("generates strings of length %i", (len) => {
+    const result = randomString(workerConfig, len);
+    expect(result).toHaveLength(len);
+    expect([...result].every((char) => allowedChars.has(char))).toBe(true);
   });
 
-  it("should not contain confusing characters", () => {
-    const confusingChars = ["o", "O", "L", "l", "0", "1", "9", "g", "q", "V", "v", "U", "u", "I"];
-
-    confusingChars.forEach((char) => {
-      expect(workerConfig.random_chars.includes(char)).toBe(false);
-    });
-  });
+  it.each(["o", "O", "L", "l", "0", "1", "9", "g", "q", "V", "v", "U", "u", "I"])(
+    "excludes confusing character %s",
+    (char) => {
+      expect(allowedChars.has(char)).toBe(false);
+    }
+  );
 });

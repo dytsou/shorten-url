@@ -48,29 +48,29 @@ function setRequestSpanAttributes(span, request) {
 
 /** Wrap a Worker fetch handler with request-level spans and structured logs. */
 export function withFetchObservability(handler) {
-  return {
-    async fetch(request, env, ctx) {
-      return tracing.enterSpan("fetch", async (span) => {
-        const fields = requestFields(request);
-        setRequestSpanAttributes(span, request);
-        log("info", "request.start", fields);
+  async function observedFetch(request, env, ctx) {
+    return tracing.enterSpan("fetch", async (span) => {
+      const fields = requestFields(request);
+      setRequestSpanAttributes(span, request);
+      log("info", "request.start", fields);
 
-        try {
-          const response = await handler(request, env, ctx);
-          const status = response.status;
-          if (span.isTraced) span.setAttribute("http.response.status_code", status);
-          log("info", "request.complete", {
-            ...fields,
-            http: { ...fields.http, status },
-          });
-          return response;
-        } catch (error) {
-          logError("request.error", error, fields);
-          throw error;
-        }
-      });
-    },
-  };
+      try {
+        const response = await handler(request, env, ctx);
+        const status = response.status;
+        if (span.isTraced) span.setAttribute("http.response.status_code", status);
+        log("info", "request.complete", {
+          ...fields,
+          http: { ...fields.http, status },
+        });
+        return response;
+      } catch (error) {
+        logError("request.error", error, fields);
+        throw error;
+      }
+    });
+  }
+
+  return { fetch: observedFetch };
 }
 
 /** Run async work inside a named custom span. */
