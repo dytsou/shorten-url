@@ -12,17 +12,14 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    strategy:
-      matrix:
-        node-version: ["18", "20"]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js ${{ matrix.node-version }}
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: "24"
 
       - name: Enable Corepack
         run: corepack enable
@@ -52,6 +49,7 @@ jobs:
           # Check that required files exist
           test -f package.json || (echo "package.json missing" && exit 1)
           test -f src/worker.example.js || (echo "src/worker.example.js missing" && exit 1)
+          test -d src/lib || (echo "src/lib missing" && exit 1)
           test -f README.md || (echo "README.md missing" && exit 1)
           echo "Package structure verified ✓"
 

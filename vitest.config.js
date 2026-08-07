@@ -1,6 +1,12 @@
 import { defineConfig } from "vitest/config";
+import path from "node:path";
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      "cloudflare:workers": path.resolve("./tests/mocks/cloudflare-workers.js"),
+    },
+  },
   test: {
     globals: true,
     environment: "node",

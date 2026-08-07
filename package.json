@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "logs": "wrangler tail",
     "preview": "wrangler dev",
     "publish:npmjs": "pnpm publish --registry https://registry.npmjs.org",
     "publish:github": "pnpm publish --registry https://npm.pkg.github.com",
@@ -34,7 +35,7 @@
   },
   "homepage": "https://github.com/dytsou/shorten-url#readme",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=24.0.0"
   },
   "devDependencies": {
     "prettier": "^3.7.4",
@@ -45,6 +46,7 @@
   "files": [
     "src/worker.js",
     "src/worker.example.js",
+    "src/lib/",
     "config/",
     "docs/",
     "README.md",
