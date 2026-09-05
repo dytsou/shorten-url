@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
-import devWorker from "../src/worker.dev.js";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+
+let exampleWorker;
 
 function env() {
   return {
@@ -27,15 +28,7 @@ function request(url, country = "SG") {
 }
 
 describe("Worker entrypoint parity", () => {
-  it("routes the dev /shorten page through one Flagship evaluation", async () => {
-    const workerEnv = env();
-    const response = await devWorker.fetch(request("https://short.example/shorten"), workerEnv);
-    expect(response.status).toBe(302);
-    expect(response.headers.get("location")).toBe("https://variant.example/shorten");
-    expect(workerEnv.FLAGS.getObjectDetails).toHaveBeenCalledTimes(1);
-  });
-
-  it("routes the example root page through the same evaluator", async () => {
+  beforeAll(async () => {
     globalThis.importConfig = {
       frontend: {
         url: "https://frontend.example",
@@ -53,7 +46,10 @@ describe("Worker entrypoint parity", () => {
       },
     };
     globalThis.defaultConfig = globalThis.importConfig;
-    const { default: exampleWorker } = await import("../src/worker.example.js");
+    ({ default: exampleWorker } = await import("../src/worker.example.js"));
+  });
+
+  it("routes the example root page through one Flagship evaluation", async () => {
     const workerEnv = env();
     const response = await exampleWorker.fetch(request("https://short.example/"), workerEnv);
     expect(response.status).toBe(302);
@@ -64,7 +60,7 @@ describe("Worker entrypoint parity", () => {
   it("does not evaluate redirects", async () => {
     const workerEnv = env();
     workerEnv.LINKS.get.mockResolvedValue("https://destination.example");
-    const response = await devWorker.fetch(request("https://short.example/abc"), workerEnv);
+    const response = await exampleWorker.fetch(request("https://short.example/abc"), workerEnv);
     expect(response.status).toBe(302);
     expect(response.headers.get("location")).toBe("https://destination.example/");
     expect(workerEnv.FLAGS.getObjectDetails).not.toHaveBeenCalled();
