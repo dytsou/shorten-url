@@ -12,6 +12,8 @@
  */
 
 import { createShortener } from "./lib/shortener.js";
+import { createFlagshipAdapter } from "./lib/flagship.js";
+import { createFlagRoutes } from "./lib/flag-routes.js";
 import { endpointsFromFrontend } from "./lib/endpoints.js";
 import { withFetchObservability } from "./lib/observability.js";
 import config from "../config/config.js";
@@ -30,6 +32,14 @@ async function fetchHandler(request, env) {
     worker: workerConfig,
     endpoints: getEndpoints(),
     kv: env.LINKS,
+  });
+  const flagRoutes = createFlagRoutes({
+    prefix: "/settings",
+    shorteningPath: "/",
+    pageUrl: getEndpoints().shortenPage,
+    shortener,
+    env,
+    adapter: createFlagshipAdapter(env),
   });
 
   const requestURL = new URL(request.url);
@@ -56,12 +66,16 @@ async function fetchHandler(request, env) {
     );
     return fetch(new Request(assetURL, { method: request.method }));
   }
+  const settingsResponse = await flagRoutes.handleSettings(request, requestURL.pathname);
+  if (settingsResponse) return settingsResponse;
   if (request.method === "POST") {
     return shortener.handleShorten(request, requestURL, {
       apiPath: requestURL.pathname,
       allowedApiPaths: ["/"],
     });
   }
+  const variantResponse = await flagRoutes.evaluateShortening(request, requestURL.pathname);
+  if (variantResponse) return variantResponse;
   if (!path) return shortener.fetchHostedPage(getEndpoints().shortenPage);
   return shortener.handleShortUrlRedirect(path, params);
 }
