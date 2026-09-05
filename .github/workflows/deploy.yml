@@ -41,18 +41,19 @@ jobs:
         run: pnpm install --no-frozen-lockfile --ignore-scripts
 
       - name: Handle CNAME
+        env:
+          DISPATCH_CUSTOM_DOMAIN: ${{ github.event.inputs.custom_domain }}
+          SECRET_CUSTOM_DOMAIN: ${{ secrets.CUSTOM_DOMAIN }}
         run: |
           mkdir -p frontend/public
           # Check for custom domain from workflow dispatch
-          if [ "${{ github.event.inputs.custom_domain }}" != "" ]; then
-            echo "Using custom domain from workflow dispatch: ${{ github.event.inputs.custom_domain }}"
-            echo "${{ github.event.inputs.custom_domain }}" > frontend/public/CNAME
-            cat frontend/public/CNAME
+          if [ -n "$DISPATCH_CUSTOM_DOMAIN" ]; then
+            echo "Using custom domain from workflow dispatch"
+            printf '%s\n' "$DISPATCH_CUSTOM_DOMAIN" > frontend/public/CNAME
           # Check for custom domain from secrets
-          elif [ "${{ secrets.CUSTOM_DOMAIN }}" != "" ]; then
-            echo "Using custom domain from secrets: ${{ secrets.CUSTOM_DOMAIN }}"
-            echo "${{ secrets.CUSTOM_DOMAIN }}" > frontend/public/CNAME
-            cat frontend/public/CNAME
+          elif [ -n "$SECRET_CUSTOM_DOMAIN" ]; then
+            echo "Using custom domain from repository secret"
+            printf '%s\n' "$SECRET_CUSTOM_DOMAIN" > frontend/public/CNAME
           else
             echo "No custom domain specified, using default GitHub Pages URL"
             if [ -f "frontend/public/CNAME" ]; then
