@@ -1,8 +1,21 @@
 import { wantsJson } from "./validate.js";
 
+function withHostedPageBase(html, url) {
+  if (!/<head\b/i.test(html) || /<base\b/i.test(html)) return html;
+  let baseUrl;
+  try {
+    baseUrl = new URL(".", url).href;
+  } catch {
+    return html;
+  }
+  const escapedBaseUrl = baseUrl.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+  return html.replace(/<head\b[^>]*>/i, (head) => `${head}<base href="${escapedBaseUrl}">`);
+}
+
 async function fetchHostedPage(url, status = 200) {
   const upstream = await fetch(url, { redirect: "follow" });
-  return new Response(await upstream.text(), {
+  const html = withHostedPageBase(await upstream.text(), url);
+  return new Response(html, {
     status,
     headers: { "content-type": "text/html;charset=UTF-8" },
   });
@@ -17,9 +30,20 @@ async function fetchInterstitial(url, destination) {
 export function createResponses({ worker, endpoints }) {
   function corsHeaders() {
     if (worker.cors !== "on") return {};
+    let allowedOrigin = endpoints.frontendOrigin || "";
+    if (!allowedOrigin && endpoints.shortenPage) {
+      try {
+        allowedOrigin = new URL(endpoints.shortenPage).origin;
+      } catch {
+        allowedOrigin = "";
+      }
+    }
+    allowedOrigin ||= "*";
     return {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+      "Access-Control-Allow-Origin": allowedOrigin,
+      "Access-Control-Allow-Methods": "POST, GET, PUT, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, X-CSRF-Token",
+      ...(allowedOrigin === "*" ? {} : { "Access-Control-Allow-Credentials": "true" }),
     };
   }
 

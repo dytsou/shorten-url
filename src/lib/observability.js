@@ -1,5 +1,11 @@
 import { tracing } from "cloudflare:workers";
 
+const FLAG_OUTCOMES = new Set(["matched", "unmatched", "unpublished", "failed"]);
+
+function boundedString(value, maxLength) {
+  return typeof value === "string" && value ? value.slice(0, maxLength) : null;
+}
+
 /** Structured JSON log for Workers Logs indexing. */
 export function log(level, event, fields = {}) {
   console.log({ level, event, ts: new Date().toISOString(), ...fields });
@@ -34,6 +40,34 @@ export function requestFields(request) {
           },
         }
       : {}),
+  };
+}
+
+/** Return only bounded, non-sensitive fields for a Flagship decision log. */
+export function flagEvaluationFields(decision) {
+  const key = boundedString(decision?.flagKey, 64) || "shorten-routing";
+  const outcome = FLAG_OUTCOMES.has(decision?.outcome) ? decision.outcome : "failed";
+  const variant = boundedString(decision?.variant, 64);
+  const country =
+    typeof decision?.country === "string" && /^[A-Za-z]{2}$/.test(decision.country)
+      ? decision.country.toUpperCase()
+      : null;
+  const version = boundedString(decision?.version, 128);
+  const fallbackReason = boundedString(decision?.fallbackReason, 128);
+
+  return {
+    flagship: {
+      key,
+      outcome,
+      ...(variant ? { variant } : {}),
+      ...(country ? { country } : {}),
+      ...(version ? { version } : {}),
+      ...(fallbackReason ? { fallback_reason: fallbackReason } : {}),
+    },
+    duration_ms:
+      typeof decision?.durationMs === "number" && Number.isFinite(decision.durationMs)
+        ? Math.max(0, Math.round(decision.durationMs))
+        : null,
   };
 }
 

@@ -3,6 +3,7 @@ export function endpointsFromFrontend(frontend) {
   const pagesBase = frontend.pagesBase || frontend.url;
   return {
     shortenPage: frontend.url,
+    frontendOrigin: new URL(frontend.url).origin,
     notFoundPage: new URL("404.html", pagesBase).href,
     errorPage: new URL("error.html", pagesBase).href,
     safeBrowsingWarning: new URL("safe-browsing-warning.html", pagesBase).href,
