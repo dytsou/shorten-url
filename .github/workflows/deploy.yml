@@ -28,25 +28,52 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --no-frozen-lockfile --ignore-scripts
+
       - name: Handle CNAME
         run: |
+          mkdir -p frontend/public
           # Check for custom domain from workflow dispatch
           if [ "${{ github.event.inputs.custom_domain }}" != "" ]; then
             echo "Using custom domain from workflow dispatch: ${{ github.event.inputs.custom_domain }}"
-            echo "${{ github.event.inputs.custom_domain }}" > docs/CNAME 
-            cat docs/CNAME
+            echo "${{ github.event.inputs.custom_domain }}" > frontend/public/CNAME
+            cat frontend/public/CNAME
           # Check for custom domain from secrets
           elif [ "${{ secrets.CUSTOM_DOMAIN }}" != "" ]; then
             echo "Using custom domain from secrets: ${{ secrets.CUSTOM_DOMAIN }}"
-            echo "${{ secrets.CUSTOM_DOMAIN }}" > docs/CNAME
-            cat docs/CNAME
+            echo "${{ secrets.CUSTOM_DOMAIN }}" > frontend/public/CNAME
+            cat frontend/public/CNAME
           else
             echo "No custom domain specified, using default GitHub Pages URL"
-            if [ -f "docs/CNAME" ]; then
-              rm docs/CNAME
+            if [ -f "frontend/public/CNAME" ]; then
+              rm frontend/public/CNAME
               echo "Removed existing CNAME file"
             fi
+            if [ -f "docs/CNAME" ]; then
+              rm docs/CNAME
+              echo "Removed existing docs/CNAME file"
+            fi
           fi
+
+      - name: Build frontend
+        working-directory: frontend
+        run: pnpm build
+
+      - name: Assemble Pages artifact
+        run: |
+          mkdir -p site
+          cp -R docs/. site/
+          cp -R frontend/dist/. site/
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
@@ -54,7 +81,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: "docs"
+          path: "site"
 
   deploy:
     runs-on: ubuntu-latest

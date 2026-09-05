@@ -13,6 +13,12 @@ const config = {
     // REQUIRED: Change this to your GitHub Pages URL or custom domain
     url: "https://yourusername.github.io/your-repo-name/",
 
+    // Public Worker origin used by frontend/index.html for shortening and
+    // protected settings when the frontend is hosted separately. Keep it in
+    // sync with the HTML meta tag or VITE_WORKER_ORIGIN; leave empty when the
+    // Worker serves the page.
+    workerOrigin: "",
+
     // Domain displayed in the custom slug input prefix
     // If null, will use the current domain automatically
     // Example: "short.ly" or "yourdomain.com"
@@ -64,6 +70,7 @@ const config = {
       "support",
       "contact",
       "about",
+      "settings",
     ],
   },
 
@@ -71,6 +78,18 @@ const config = {
   storage: {
     // KV namespace binding name (must match wrangler.toml)
     binding_name: "LINKS",
+  },
+
+  // Flagship Configuration (optional until the binding and secrets are provisioned)
+  flagship: {
+    // Wrangler binding name. The Worker expects the official `env.FLAGS` binding.
+    binding_name: "FLAGS",
+    // Set in the Flagship binding block in wrangler.toml; do not put credentials here.
+    app_id: "",
+    // Worker secrets/variables used only by protected settings management:
+    // CLOUDFLARE_ACCOUNT_ID, FLAGSHIP_APP_ID, FLAGSHIP_API_TOKEN,
+    // FLAGSHIP_CSRF_SECRET, CF_ACCESS_ISSUER, CF_ACCESS_AUDIENCE,
+    // and optionally CF_ACCESS_JWKS_URL.
   },
 
   // Security Configuration

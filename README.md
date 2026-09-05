@@ -61,9 +61,29 @@ const config = {
 3. Enable GitHub Pages for the main branch
 4. Your frontend will be available at `https://yourusername.github.io/shorten-url/`
 
+For a separately hosted frontend, set the public Worker origin used by both
+shortening and protected Flagship settings in the `shorten-url-worker-origin`
+meta tag in `frontend/index.html` (for example, `https://short.example`).
+Build the app from `frontend/` before deploying its `dist/` directory:
+
+```bash
+cd frontend
+aube install
+aube run build
+```
+
+The included Pages workflow performs this build automatically and combines
+`frontend/dist/` with the supporting static pages under `docs/` for deployment.
+
+Leave the origin tag empty when the Worker serves the page itself; the page
+then uses its current origin. This is a public URL, not a secret. The same
+values can be supplied at build time with `VITE_WORKER_ORIGIN`,
+`VITE_WORKER_SETTINGS_PATH`, and `VITE_WORKER_SHORTEN_PATH`. Keep the Worker
+origin in sync with `frontend.workerOrigin` in `config/config.js`.
+
 #### Option B: Custom Domain
 
-1. Upload the `docs/` directory to your web hosting
+1. Upload the built `frontend/dist/` directory to your web hosting
 2. Update the `frontend.url` in `config/config.js` to match your domain
 
 ### 4. Setup Cloudflare Workers
@@ -123,11 +143,12 @@ const config = {
 
 ### Frontend Configuration
 
-| Option                   | Description                             | Default  |
-| ------------------------ | --------------------------------------- | -------- |
-| `frontend.url`           | URL where your frontend is hosted       | Required |
-| `frontend.displayDomain` | Domain shown in UI (null = auto-detect) | `null`   |
-| `frontend.theme`         | UI theme selection                      | `""`     |
+| Option                   | Description                                        | Default  |
+| ------------------------ | -------------------------------------------------- | -------- |
+| `frontend.url`           | URL where your frontend is hosted                  | Required |
+| `frontend.workerOrigin`  | Public Worker origin used by static settings pages | `""`     |
+| `frontend.displayDomain` | Domain shown in UI (null = auto-detect)            | `null`   |
+| `frontend.theme`         | UI theme selection                                 | `""`     |
 
 ### Worker Configuration
 

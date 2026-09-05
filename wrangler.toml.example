@@ -6,6 +6,13 @@ compatibility_date = "2026-01-01"
 binding = "LINKS"
 id = "your-kv-namespace-id"
 
+# Provision a Flagship app, replace the placeholder, and uncomment this block
+# before enabling country-targeted shortening. Without it the Worker safely
+# keeps the existing shortening behavior.
+# [[flagship]]
+# binding = "FLAGS"
+# app_id = "REPLACE_WITH_FLAGSHIP_APP_ID"
+
 [observability]
 enabled = true
 
@@ -14,6 +21,13 @@ enabled = true
 invocation_logs = true
 persist = true
 head_sampling_rate = 1
+
+[vars]
+# Non-secret Access/Flagship identifiers may be set here or with `wrangler secret`.
+# Never put FLAGSHIP_API_TOKEN or FLAGSHIP_CSRF_SECRET in this file.
+# FLAGSHIP_APP_ID = "REPLACE_WITH_FLAGSHIP_APP_ID"
+# CF_ACCESS_ISSUER = "https://YOURTEAM.cloudflareaccess.com"
+# CF_ACCESS_AUDIENCE = "REPLACE_WITH_ACCESS_AUDIENCE"
 
 [observability.traces]
 enabled = true

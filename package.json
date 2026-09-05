@@ -57,6 +57,7 @@
     "src/lib/",
     "config/",
     "docs/",
+    "frontend/",
     "README.md",
     "LICENSE"
   ]
