@@ -2,6 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createWorkerHandler } from "../src/lib/worker-handler.js";
 import { isFrontendAssetPath } from "../src/lib/assets.js";
 import { createResponses } from "../src/lib/responses.js";
+import {
+  createAssetsBinding,
+  createWorkerEnvironment,
+  mockedAccessHeaders,
+} from "./mocks/cloudflare-workers.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -12,43 +17,18 @@ function request(path, options = {}) {
 }
 
 function createAssets() {
-  const calls = [];
-  const binding = {
-    calls,
-    fetch: vi.fn(async (assetRequest) => {
-      calls.push(assetRequest);
-      const pathname = new URL(assetRequest.url).pathname;
-      if (pathname === "/") {
-        return new Response("<html><body>worker shell</body></html>", {
-          headers: { "content-type": "text/html;charset=UTF-8" },
-        });
-      }
-      if (pathname === "/assets/main.js") {
-        return new Response("console.log('asset');", {
-          headers: { "content-type": "text/javascript;charset=UTF-8" },
-        });
-      }
-      return new Response("missing", { status: 404 });
+  return createAssetsBinding({
+    "/": new Response("<html><body>worker shell</body></html>", {
+      headers: { "content-type": "text/html;charset=UTF-8" },
     }),
-  };
-  return binding;
+    "/assets/main.js": new Response("console.log('asset');", {
+      headers: { "content-type": "text/javascript;charset=UTF-8" },
+    }),
+  });
 }
 
 function createEnvironment(assets) {
-  return {
-    ASSETS: assets,
-    LINKS: {
-      get: vi.fn().mockResolvedValue(null),
-      put: vi.fn(),
-    },
-  };
-}
-
-function accessHeaders() {
-  return {
-    "Cf-Access-Jwt-Assertion": "token",
-    "Cf-Access-Authenticated-User-Email": "operator@example.com",
-  };
+  return createWorkerEnvironment({ assets });
 }
 
 function createHandler(options = {}) {
@@ -88,7 +68,7 @@ describe("Worker-hosted frontend assets", () => {
     expect(assets.fetch).not.toHaveBeenCalled();
 
     const allowed = await worker(
-      request("/settings/advanced", { headers: accessHeaders() }),
+      request("/settings/advanced", { headers: mockedAccessHeaders() }),
       environment
     );
     expect(allowed.status).toBe(200);
@@ -98,19 +78,48 @@ describe("Worker-hosted frontend assets", () => {
     expect(new URL(assets.calls[0].url).pathname).toBe("/");
   });
 
+  it("does not trust Access-like headers on an unlisted host", async () => {
+    const assets = createAssets();
+    const environment = {
+      ...createEnvironment(assets),
+      ACCESS_ALLOWED_HOSTS: "short.example",
+    };
+    const worker = createHandler({ verifyToken: vi.fn().mockResolvedValue(true) });
+
+    const settings = await worker(
+      new Request("https://direct-worker.example/settings", { headers: mockedAccessHeaders() }),
+      environment
+    );
+    expect(settings.status).toBe(403);
+    expect(assets.fetch).not.toHaveBeenCalled();
+
+    const shorten = await worker(
+      new Request("https://direct-worker.example/shorten", {
+        method: "POST",
+        headers: mockedAccessHeaders(),
+        body: "{}",
+      }),
+      environment
+    );
+    expect(shorten.status).toBe(403);
+  });
+
   it("protects HEAD settings shell requests and keeps settings APIs ahead of assets", async () => {
     const assets = createAssets();
     const worker = createHandler({ verifyToken: vi.fn().mockResolvedValue(true) });
     const environment = createEnvironment(assets);
 
     const shell = await worker(
-      request("/settings/", { method: "HEAD", headers: accessHeaders() }),
+      request("/settings/", { method: "HEAD", headers: mockedAccessHeaders() }),
       environment
     );
     expect(shell.status).toBe(200);
     expect(assets.calls[0].method).toBe("HEAD");
 
-    const api = await worker(request("/settings/api", { headers: accessHeaders() }), environment);
+    const api = await worker(
+      request("/settings/api", { headers: mockedAccessHeaders() }),
+      environment
+    );
     expect(api.status).toBe(404);
     expect((await api.json()).message).toBe("Settings route not found");
     expect(assets.fetch).toHaveBeenCalledTimes(1);
@@ -190,25 +199,30 @@ describe("Worker-hosted frontend assets", () => {
 });
 
 describe("legacy hosted-page fallbacks", () => {
-  it("does not fetch an unconfigured hosted page", async () => {
+  it("does not fetch when legacy pages are unconfigured", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     const responses = createResponses({ worker: {}, endpoints: {} });
-    const response = await responses.fetchHostedPage("", 502);
 
-    expect(response.status).toBe(502);
-    expect(await response.text()).toBe("Page is not configured");
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
+    try {
+      const hostedPage = await responses.fetchHostedPage("", 502);
+      expect(hostedPage.status).toBe(502);
+      expect(await hostedPage.text()).toBe("Page is not configured");
 
-  it("does not fetch an unconfigured redirect interstitial", async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
-    const responses = createResponses({ worker: {}, endpoints: {} });
-    const response = await responses.fetchInterstitial("");
+      const notFound = await responses.notFound();
+      expect(notFound.status).toBe(404);
+      expect((await notFound.json()).message).toBe("URL not found");
 
-    expect(response.status).toBe(503);
-    expect(await response.text()).toBe("Redirect interstitial is not configured");
-    expect(fetchMock).not.toHaveBeenCalled();
+      const error = await responses.errorResponse("Request failed", 502, new Request("https://x"));
+      expect(error.status).toBe(502);
+      expect((await error.json()).message).toBe("Request failed");
+
+      const interstitial = await responses.fetchInterstitial("");
+      expect(interstitial.status).toBe(503);
+      expect(await interstitial.text()).toBe("Redirect interstitial is not configured");
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

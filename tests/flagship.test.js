@@ -111,4 +111,26 @@ describe("Flagship adapter", () => {
       fallbackReason: "timeout",
     });
   });
+
+  it("does not log provider exception text", async () => {
+    const secret = "provider-token-should-not-be-logged";
+    const error = vi.spyOn(console, "log").mockImplementation(() => {});
+    const adapter = createFlagshipAdapter({
+      FLAGS: { getObjectDetails: vi.fn().mockRejectedValue(new Error(secret)) },
+    });
+
+    await expect(adapter.evaluate("US")).resolves.toMatchObject({
+      outcome: "failed",
+      fallbackReason: "provider_error",
+    });
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        level: "warn",
+        event: "flagship.evaluate_failed",
+        fallback_reason: "provider_error",
+      })
+    );
+    expect(JSON.stringify(error.mock.calls)).not.toContain(secret);
+    error.mockRestore();
+  });
 });
