@@ -49,6 +49,69 @@ export function createFlagManagement({ adapter, responses, env, verifyToken, all
     return authorizeSettingsRequest(request, env, { mutation, verifyToken, allowedOrigins });
   }
 
+  async function handleCsrf(request) {
+    const token = await createCsrfToken(request, env);
+    if (!token)
+      return json(responses, { status: 503, message: "Settings are not configured" }, 503);
+    return json(responses, { csrfToken: token });
+  }
+
+  async function handleFlags() {
+    const flags = await adapter.listFlags();
+    const result = (Array.isArray(flags) ? flags : [flags])
+      .map(publicFlag)
+      .filter(Boolean)
+      .filter((flag) => flag.key === SHORTENING_FLAG_KEY);
+    return json(responses, { flags: result });
+  }
+
+  async function handleCreateFlag(request) {
+    const body = await readJson(request);
+    const validated = validateFlagDefinition(body);
+    if (!validated.ok) {
+      return json(responses, { status: 400, message: validated.errors.join("; ") }, 400);
+    }
+    const result = await adapter.createFlag(validated.value);
+    return json(responses, { flag: publicFlag(result) }, 201);
+  }
+
+  async function handleSaveFlag(request) {
+    const body = await readJson(request);
+    const { expectedUpdatedAt, ...definition } = body;
+    if (typeof expectedUpdatedAt !== "string" || !expectedUpdatedAt) {
+      return json(responses, { status: 409, message: "A current version is required" }, 409);
+    }
+    const validated = validateFlagDefinition(definition);
+    if (!validated.ok) {
+      return json(responses, { status: 400, message: validated.errors.join("; ") }, 400);
+    }
+    const result = await adapter.saveFlag(validated.value, { expectedUpdatedAt });
+    return json(responses, { flag: publicFlag(result) });
+  }
+
+  async function handlePublishFlag(request) {
+    const { expectedUpdatedAt } = await readJson(request);
+    if (typeof expectedUpdatedAt !== "string" || !expectedUpdatedAt) {
+      return json(responses, { status: 409, message: "A current version is required" }, 409);
+    }
+    const current = await adapter.getFlag(SHORTENING_FLAG_KEY);
+    const definition = fromProviderFlag(current);
+    if (!definition) throw new FlagshipManagementError("Invalid Flagship definition", 502);
+    const result = await adapter.publishFlag(definition, expectedUpdatedAt);
+    return json(responses, { flag: publicFlag(result) });
+  }
+
+  async function dispatch(request, route) {
+    if (route === "csrf" && request.method === "GET") return handleCsrf(request);
+    if (route === "flags" && request.method === "GET") return handleFlags();
+    if (route === "flag" && request.method === "POST") return handleCreateFlag(request);
+    if (route.startsWith("flag:") && request.method === "PUT") return handleSaveFlag(request);
+    if (route.startsWith("publish:") && request.method === "POST") {
+      return handlePublishFlag(request);
+    }
+    return json(responses, { status: 404, message: "Settings route not found" }, 404);
+  }
+
   async function handle(request, route) {
     const mutation = request.method !== "GET";
     const authorization = await authorized(request, mutation);
@@ -62,53 +125,7 @@ export function createFlagManagement({ adapter, responses, env, verifyToken, all
     }
 
     try {
-      if (route === "csrf" && request.method === "GET") {
-        const token = await createCsrfToken(request, env);
-        if (!token)
-          return json(responses, { status: 503, message: "Settings are not configured" }, 503);
-        return json(responses, { csrfToken: token });
-      }
-      if (route === "flags" && request.method === "GET") {
-        const flags = await adapter.listFlags();
-        const result = (Array.isArray(flags) ? flags : [flags])
-          .map(publicFlag)
-          .filter(Boolean)
-          .filter((flag) => flag.key === SHORTENING_FLAG_KEY);
-        return json(responses, { flags: result });
-      }
-      if (route === "flag" && request.method === "POST") {
-        const body = await readJson(request);
-        const validated = validateFlagDefinition(body);
-        if (!validated.ok)
-          return json(responses, { status: 400, message: validated.errors.join("; ") }, 400);
-        const result = await adapter.createFlag(validated.value);
-        return json(responses, { flag: publicFlag(result) }, 201);
-      }
-      if (route.startsWith("flag:") && request.method === "PUT") {
-        const body = await readJson(request);
-        const expectedUpdatedAt = body.expectedUpdatedAt;
-        if (typeof expectedUpdatedAt !== "string" || !expectedUpdatedAt) {
-          return json(responses, { status: 409, message: "A current version is required" }, 409);
-        }
-        const { expectedUpdatedAt: _ignored, ...definition } = body;
-        const validated = validateFlagDefinition(definition);
-        if (!validated.ok)
-          return json(responses, { status: 400, message: validated.errors.join("; ") }, 400);
-        const result = await adapter.saveFlag(validated.value, { expectedUpdatedAt });
-        return json(responses, { flag: publicFlag(result) });
-      }
-      if (route.startsWith("publish:") && request.method === "POST") {
-        const expectedUpdatedAt = (await readJson(request)).expectedUpdatedAt;
-        if (typeof expectedUpdatedAt !== "string" || !expectedUpdatedAt) {
-          return json(responses, { status: 409, message: "A current version is required" }, 409);
-        }
-        const current = await adapter.getFlag(SHORTENING_FLAG_KEY);
-        const definition = fromProviderFlag(current);
-        if (!definition) throw new FlagshipManagementError("Invalid Flagship definition", 502);
-        const result = await adapter.publishFlag(definition, expectedUpdatedAt);
-        return json(responses, { flag: publicFlag(result) });
-      }
-      return json(responses, { status: 404, message: "Settings route not found" }, 404);
+      return await dispatch(request, route);
     } catch (error) {
       logError("flagship.settings_failed", error, { route });
       const failure = safeError(error);

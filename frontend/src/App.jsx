@@ -13,6 +13,12 @@ import {
 import "./styles/app.css";
 
 const FLAG_KEY = "shorten-routing";
+let nextEditorItemId = 0;
+
+function createEditorItemId(prefix) {
+  nextEditorItemId += 1;
+  return `${prefix}-${nextEditorItemId}`;
+}
 
 function emptyDefinition() {
   return {
@@ -20,9 +26,15 @@ function emptyDefinition() {
     description: "Country-aware destinations for newly created short links.",
     enabled: true,
     defaultVariant: "control",
-    variants: [{ key: "control", url: "" }],
+    variants: [{ id: createEditorItemId("variant"), key: "control", url: "" }],
     rules: [],
   };
+}
+
+function normalizeVariantUrl(variant) {
+  if (typeof variant?.value?.url === "string") return variant.value.url;
+  if (typeof variant?.url === "string") return variant.url;
+  return "";
 }
 
 function normalizeDefinition(flag) {
@@ -30,13 +42,9 @@ function normalizeDefinition(flag) {
 
   const variants = Array.isArray(flag.variants)
     ? flag.variants.map((variant) => ({
+        id: createEditorItemId("variant"),
         key: typeof variant?.key === "string" ? variant.key : "",
-        url:
-          typeof variant?.value?.url === "string"
-            ? variant.value.url
-            : typeof variant?.url === "string"
-              ? variant.url
-              : "",
+        url: normalizeVariantUrl(variant),
       }))
     : [];
   const normalizedVariants = variants.length ? variants : emptyDefinition().variants;
@@ -52,6 +60,7 @@ function normalizeDefinition(flag) {
     variants: normalizedVariants,
     rules: Array.isArray(flag.rules)
       ? flag.rules.map((rule, index) => ({
+          id: createEditorItemId("rule"),
           priority: Number.isInteger(rule?.priority) ? rule.priority : index + 1,
           variant: typeof rule?.variant === "string" ? rule.variant : normalizedVariants[0].key,
           countries: Array.isArray(rule?.countries)
@@ -115,22 +124,10 @@ function originHost(origin) {
 }
 
 async function copyText(value) {
-  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(value);
-    return;
+  if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
+    throw new Error("Copy is not available");
   }
-  if (typeof document === "undefined") throw new Error("Copy is not available");
-
-  const input = document.createElement("textarea");
-  input.value = value;
-  input.setAttribute("readonly", "");
-  input.style.position = "fixed";
-  input.style.opacity = "0";
-  document.body.appendChild(input);
-  input.select();
-  const copied = document.execCommand("copy");
-  input.remove();
-  if (!copied) throw new Error("Copy is not available");
+  await navigator.clipboard.writeText(value);
 }
 
 function Header({ config, settingsPage }) {
@@ -353,7 +350,10 @@ function DefinitionEditor({ definition, setDefinition, disabled }) {
       let index = current.variants.length + 1;
       let key = `variant-${index}`;
       while (taken.has(key)) key = `variant-${++index}`;
-      return { ...current, variants: [...current.variants, { key, url: "" }] };
+      return {
+        ...current,
+        variants: [...current.variants, { id: createEditorItemId("variant"), key, url: "" }],
+      };
     });
   }
 
@@ -378,6 +378,7 @@ function DefinitionEditor({ definition, setDefinition, disabled }) {
       rules: [
         ...current.rules,
         {
+          id: createEditorItemId("rule"),
           priority: Math.max(0, ...current.rules.map((rule) => Number(rule.priority) || 0)) + 1,
           variant: current.variants[0]?.key || "",
           countries: ["US"],
@@ -408,7 +409,7 @@ function DefinitionEditor({ definition, setDefinition, disabled }) {
         />
       </div>
 
-      <label className="toggle-row" htmlFor="flag-enabled">
+      <label className="toggle-row" htmlFor="flag-enabled" aria-label="Routing flag enabled">
         <span>
           <strong>Routing flag enabled</strong>
           <small>Use country rules when creating a new short link.</small>
@@ -433,20 +434,20 @@ function DefinitionEditor({ definition, setDefinition, disabled }) {
       </div>
       <div className="repeat-list">
         {definition.variants.map((variant, index) => (
-          <div className="repeat-row" key={`variant-${index}`}>
+          <div className="repeat-row" key={variant.id}>
             <div className="field-group field-group--compact">
-              <label htmlFor={`variant-key-${index}`}>Key</label>
+              <label htmlFor={`variant-key-${variant.id}`}>Key</label>
               <input
-                id={`variant-key-${index}`}
+                id={`variant-key-${variant.id}`}
                 value={variant.key}
                 onChange={(event) => updateVariantKey(index, event.target.value)}
                 placeholder="control"
               />
             </div>
             <div className="field-group field-group--wide">
-              <label htmlFor={`variant-url-${index}`}>Destination URL</label>
+              <label htmlFor={`variant-url-${variant.id}`}>Destination URL</label>
               <input
-                id={`variant-url-${index}`}
+                id={`variant-url-${variant.id}`}
                 type="url"
                 value={variant.url}
                 onChange={(event) => updateVariant(index, "url", event.target.value)}
@@ -473,8 +474,8 @@ function DefinitionEditor({ definition, setDefinition, disabled }) {
           value={definition.defaultVariant}
           onChange={(event) => updateDefinition({ defaultVariant: event.target.value })}
         >
-          {definition.variants.map((variant, index) => (
-            <option key={`default-${index}`} value={variant.key}>
+          {definition.variants.map((variant) => (
+            <option key={variant.id} value={variant.key}>
               {variant.key || "Unnamed variant"}
             </option>
           ))}
@@ -497,11 +498,11 @@ function DefinitionEditor({ definition, setDefinition, disabled }) {
       ) : (
         <div className="repeat-list repeat-list--rules">
           {definition.rules.map((rule, index) => (
-            <div className="repeat-row repeat-row--rule" key={`rule-${index}`}>
+            <div className="repeat-row repeat-row--rule" key={rule.id}>
               <div className="field-group field-group--priority">
-                <label htmlFor={`rule-priority-${index}`}>Priority</label>
+                <label htmlFor={`rule-priority-${rule.id}`}>Priority</label>
                 <input
-                  id={`rule-priority-${index}`}
+                  id={`rule-priority-${rule.id}`}
                   type="number"
                   min="1"
                   step="1"
@@ -510,23 +511,23 @@ function DefinitionEditor({ definition, setDefinition, disabled }) {
                 />
               </div>
               <div className="field-group field-group--compact">
-                <label htmlFor={`rule-variant-${index}`}>Serve</label>
+                <label htmlFor={`rule-variant-${rule.id}`}>Serve</label>
                 <select
-                  id={`rule-variant-${index}`}
+                  id={`rule-variant-${rule.id}`}
                   value={rule.variant}
                   onChange={(event) => updateRule(index, "variant", event.target.value)}
                 >
-                  {definition.variants.map((variant, variantIndex) => (
-                    <option key={`rule-option-${variantIndex}`} value={variant.key}>
+                  {definition.variants.map((variant) => (
+                    <option key={`${rule.id}-${variant.id}`} value={variant.key}>
                       {variant.key || "Unnamed"}
                     </option>
                   ))}
                 </select>
               </div>
               <div className="field-group field-group--wide">
-                <label htmlFor={`rule-countries-${index}`}>Countries</label>
+                <label htmlFor={`rule-countries-${rule.id}`}>Countries</label>
                 <input
-                  id={`rule-countries-${index}`}
+                  id={`rule-countries-${rule.id}`}
                   value={rule.countries.join(", ")}
                   onChange={(event) =>
                     updateRule(
@@ -669,8 +670,12 @@ function SettingsPage({ config }) {
   }
 
   const editorDisabled = phase !== "ready" || Boolean(busy);
-  const settingsState =
-    phase === "loading" ? "CONNECTING" : phase === "ready" ? "CONNECTED" : "OFFLINE";
+  let settingsState = "OFFLINE";
+  if (phase === "loading") settingsState = "CONNECTING";
+  if (phase === "ready") settingsState = "CONNECTED";
+  let saveLabel = "Create flag";
+  if (hasFlag) saveLabel = "Save draft";
+  if (busy === "save") saveLabel = "Saving…";
 
   return (
     <>
@@ -717,7 +722,7 @@ function SettingsPage({ config }) {
                 onClick={handleSave}
                 disabled={editorDisabled}
               >
-                {busy === "save" ? "Saving…" : hasFlag ? "Save draft" : "Create flag"}
+                {saveLabel}
               </button>
               <button
                 className="button button--primary"
