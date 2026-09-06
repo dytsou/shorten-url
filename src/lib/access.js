@@ -24,10 +24,10 @@ const jwksCache = new Map();
 const JWKS_TTL_MS = 5 * 60 * 1000;
 
 function decodeBase64Url(value) {
-  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const normalized = value.replaceAll("-", "+").replaceAll("_", "/");
   const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
   const binary = atob(padded);
-  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return Uint8Array.from(binary, (char) => char.codePointAt(0));
 }
 
 function decodeJson(value) {
@@ -43,70 +43,85 @@ function issuerFor(env) {
   return null;
 }
 
-export async function verifyAccessJwt(token, env, { fetchImpl = globalThis.fetch } = {}) {
+function isObjectRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function decodeAccessToken(token, env) {
   const segments = String(token).split(".");
-  if (segments.length !== 3) return false;
+  if (segments.length !== 3) return null;
   const [encodedHeader, encodedPayload, encodedSignature] = segments;
   const issuer = issuerFor(env);
   const audience = env?.CF_ACCESS_AUDIENCE;
   const jwksUrl = env?.CF_ACCESS_JWKS_URL || (issuer ? `${issuer}/cdn-cgi/access/certs` : null);
   if (!encodedHeader || !encodedPayload || !encodedSignature || !issuer || !audience || !jwksUrl) {
-    return false;
+    return null;
   }
 
-  let header;
-  let payload;
   try {
-    header = decodeJson(encodedHeader);
-    payload = decodeJson(encodedPayload);
+    const header = decodeJson(encodedHeader);
+    const payload = decodeJson(encodedPayload);
+    if (!isObjectRecord(header) || !isObjectRecord(payload)) return null;
+    if (header.alg !== "RS256" || typeof header.kid !== "string") return null;
+    return {
+      encodedHeader,
+      encodedPayload,
+      encodedSignature,
+      header,
+      payload,
+      issuer,
+      audience,
+      jwksUrl,
+    };
   } catch {
-    return false;
+    return null;
   }
-  if (
-    !header ||
-    typeof header !== "object" ||
-    Array.isArray(header) ||
-    !payload ||
-    typeof payload !== "object" ||
-    Array.isArray(payload)
-  ) {
-    return false;
-  }
-  if (header.alg !== "RS256" || typeof header.kid !== "string") return false;
+}
+
+function hasValidAccessClaims({ payload, issuer, audience }) {
   const now = Math.floor(Date.now() / 1000);
   const audiences = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
   if (audiences.some((value) => typeof value !== "string")) return false;
+  if (payload.iss !== issuer || !audiences.includes(audience)) return false;
+  if (typeof payload.exp !== "number" || !Number.isFinite(payload.exp) || payload.exp <= now) {
+    return false;
+  }
   if (
-    payload.iss !== issuer ||
-    !audiences.includes(audience) ||
-    typeof payload.exp !== "number" ||
-    !Number.isFinite(payload.exp) ||
-    payload.exp <= now ||
-    (payload.nbf !== undefined &&
-      (typeof payload.nbf !== "number" || !Number.isFinite(payload.nbf) || payload.nbf > now))
+    payload.nbf !== undefined &&
+    (typeof payload.nbf !== "number" || !Number.isFinite(payload.nbf) || payload.nbf > now)
   ) {
     return false;
   }
+  return true;
+}
 
+async function loadJwks(jwksUrl, fetchImpl) {
   let keys = jwksCache.get(jwksUrl);
-  if (!keys || keys.expiresAt <= Date.now()) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 2000);
-    try {
-      const response = await fetchImpl(jwksUrl, {
-        headers: { accept: "application/json" },
-        signal: controller.signal,
-      });
-      if (!response.ok) return false;
-      keys = await response.json();
-      if (!Array.isArray(keys?.keys)) return false;
-      jwksCache.set(jwksUrl, { ...keys, expiresAt: Date.now() + JWKS_TTL_MS });
-    } catch {
-      return false;
-    } finally {
-      clearTimeout(timeout);
-    }
+  if (keys && keys.expiresAt > Date.now()) return keys;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 2000);
+  try {
+    const response = await fetchImpl(jwksUrl, {
+      headers: { accept: "application/json" },
+      signal: controller.signal,
+    });
+    if (!response.ok) return null;
+    keys = await response.json();
+    if (!Array.isArray(keys?.keys)) return null;
+    jwksCache.set(jwksUrl, { ...keys, expiresAt: Date.now() + JWKS_TTL_MS });
+    return jwksCache.get(jwksUrl);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
   }
+}
+
+async function verifyAccessSignature(
+  { encodedHeader, encodedPayload, encodedSignature, header },
+  keys
+) {
   const jwk = keys?.keys?.find((key) => key.kid === header.kid && key.kty === "RSA");
   if (!jwk) return false;
   try {
@@ -128,6 +143,14 @@ export async function verifyAccessJwt(token, env, { fetchImpl = globalThis.fetch
   }
 }
 
+export async function verifyAccessJwt(token, env, { fetchImpl = globalThis.fetch } = {}) {
+  const decoded = decodeAccessToken(token, env);
+  if (!decoded || !hasValidAccessClaims(decoded)) return false;
+  const keys = await loadJwks(decoded.jwksUrl, fetchImpl);
+  if (!keys) return false;
+  return verifyAccessSignature(decoded, keys);
+}
+
 async function hmac(secret, value, usage) {
   const key = await crypto.subtle.importKey(
     "raw",
@@ -141,8 +164,8 @@ async function hmac(secret, value, usage) {
 
 function base64Url(bytes) {
   let binary = "";
-  for (const byte of new Uint8Array(bytes)) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  for (const byte of new Uint8Array(bytes)) binary += String.fromCodePoint(byte);
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
 }
 
 function originFromRequest(request) {

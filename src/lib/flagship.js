@@ -135,7 +135,7 @@ export function createFlagshipAdapter(
         binding.getObjectDetails(
           flagKey,
           { url: null },
-          normalizedCountry ? { country: normalizedCountry } : {}
+          normalizedCountry ? { country: normalizedCountry } : undefined
         ),
         new Promise(
           (_, reject) =>
@@ -173,7 +173,7 @@ export function createFlagshipAdapter(
           accept: "application/json",
           "content-type": "application/json",
           authorization: `Bearer ${token}`,
-          ...(options.headers || {}),
+          ...options.headers,
         },
       });
     } catch {

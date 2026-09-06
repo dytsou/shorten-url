@@ -3,6 +3,7 @@ import {
   createFrontendConfig,
   isSettingsRoute,
   loadSettings,
+  normalizePath,
   settingsApiUrl,
   shortenUrl,
   updateShorteningFlag,
@@ -28,6 +29,11 @@ function documentWithMeta(values) {
 }
 
 describe("frontend API configuration", () => {
+  it("normalizes repeated trailing slashes in configured paths", () => {
+    expect(normalizePath("/shorten///")).toBe("/shorten");
+    expect(normalizePath("////")).toBe("/");
+  });
+
   it("uses same-origin Worker paths when the shell is hosted at the root", () => {
     const config = createFrontendConfig({
       windowRef: {

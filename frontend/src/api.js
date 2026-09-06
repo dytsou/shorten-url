@@ -37,14 +37,20 @@ function normalizeOrigin(value, fallback) {
   }
 }
 
+function stripTrailingSlashes(pathname) {
+  let end = pathname.length;
+  while (end > 0 && pathname[end - 1] === "/") end -= 1;
+  return pathname.slice(0, end) || "/";
+}
+
 export function normalizePath(value, fallback = "/") {
   const candidate = String(value || "").trim();
-  if (!candidate || !candidate.startsWith("/")) return fallback;
+  if (!candidate?.startsWith("/")) return fallback;
 
   try {
     const url = new URL(candidate, "https://shorten-url.invalid");
     if (url.search || url.hash) return fallback;
-    return url.pathname.replace(/\/+$/, "") || "/";
+    return stripTrailingSlashes(url.pathname);
   } catch {
     return fallback;
   }
@@ -124,12 +130,12 @@ export class WorkerApiError extends Error {
 }
 
 export function errorMessage(body, status, fallback = "The request could not be completed") {
-  const message =
-    typeof body?.message === "string"
-      ? body.message.trim()
-      : typeof body?.error === "string"
-        ? body.error.trim()
-        : "";
+  let message = "";
+  if (typeof body?.message === "string") {
+    message = body.message.trim();
+  } else if (typeof body?.error === "string") {
+    message = body.error.trim();
+  }
   if (message) return message;
   return status ? `${fallback} (${status})` : fallback;
 }

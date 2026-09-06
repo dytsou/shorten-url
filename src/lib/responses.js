@@ -8,7 +8,7 @@ function withHostedPageBase(html, url) {
   } catch {
     return html;
   }
-  const escapedBaseUrl = baseUrl.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+  const escapedBaseUrl = baseUrl.replaceAll("&", "&amp;").replaceAll('"', "&quot;");
   return html.replace(/<head\b[^>]*>/i, (head) => `${head}<base href="${escapedBaseUrl}">`);
 }
 

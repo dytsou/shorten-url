@@ -14,6 +14,22 @@ function originFromPageUrl(pageUrl) {
   }
 }
 
+function isPathWithin(path, prefix) {
+  return path === prefix || path.startsWith(`${prefix}/`);
+}
+
+function managementRoute(path, apiPrefix) {
+  const suffix = path === apiPrefix ? "" : path.slice(`${apiPrefix}/`.length);
+  const routes = {
+    csrf: "csrf",
+    flags: "flags",
+    flag: "flag",
+    "flag/shorten-routing": "flag:shorten-routing",
+    "flag/shorten-routing/publish": "publish:shorten-routing",
+  };
+  return routes[suffix] || "unknown";
+}
+
 export function createFlagRoutes({
   prefix,
   shorteningPath,
@@ -40,24 +56,14 @@ export function createFlagRoutes({
     allowedOrigins: trustedOrigins,
   });
   const renderSettingsShell = fetchSettingsShell || (() => shortener.fetchHostedPage(pageUrl));
+  const apiPrefix = `${settingsPrefix}/api`;
 
   async function handleSettings(request, path) {
-    const apiPrefix = `${settingsPrefix}/api`;
-    if (path === apiPrefix || path.startsWith(`${apiPrefix}/`)) {
-      const suffix = path === apiPrefix ? "" : path.slice(`${apiPrefix}/`.length);
-      if (suffix === "csrf") return management.handle(request, "csrf");
-      if (suffix === "flags") return management.handle(request, "flags");
-      if (suffix === "flag") return management.handle(request, "flag");
-      if (suffix === "flag/shorten-routing")
-        return management.handle(request, "flag:shorten-routing");
-      if (suffix === "flag/shorten-routing/publish") {
-        return management.handle(request, "publish:shorten-routing");
-      }
-      return management.handle(request, "unknown");
-    }
+    if (isPathWithin(path, apiPrefix))
+      return management.handle(request, managementRoute(path, apiPrefix));
 
-    if (path !== settingsPrefix && !path.startsWith(`${settingsPrefix}/`)) return null;
-    if (request.method !== "GET" && request.method !== "HEAD")
+    if (!isPathWithin(path, settingsPrefix)) return null;
+    if (!["GET", "HEAD"].includes(request.method))
       return shortener.errorResponse("Method not allowed", 405, request);
 
     const authorization = await authorizeSettingsRequest(request, env, {
