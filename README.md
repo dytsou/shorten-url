@@ -17,6 +17,25 @@ A modern, fast URL shortener built with Cloudflare Workers and a responsive web 
 
 ## Quick Start
 
+### Worker-hosted React frontend
+
+The product UI is React source in `frontend/`, compiled to `frontend/dist`, and served by the Worker through its `ASSETS` binding. Worker routing and APIs remain in `src/`; the GitHub Pages deployment is documentation-only. `docs/index.html` is not a product asset.
+
+For a clean local setup, install both declared packages and use the root commands:
+
+```bash
+pnpm install --frozen-lockfile --ignore-scripts
+pnpm --dir frontend install --frozen-lockfile --ignore-scripts
+cp wrangler.toml.example wrangler.toml
+# Set a real LINKS namespace and production-only Access values in wrangler.toml or secrets.
+pnpm build
+pnpm dev
+```
+
+`pnpm dev`, `pnpm preview`, and `pnpm deploy` build `frontend/dist` before running Wrangler. The default UI makes same-origin requests to `POST /shorten` and `/settings`; `POST /` remains a compatibility endpoint.
+
+Production must use an Access-protected custom hostname, set `workers_dev = false`, and set `ACCESS_ALLOWED_HOSTS` to that hostname. Keep `CLOUDFLARE_API_TOKEN`, `FLAGSHIP_CSRF_SECRET`, and provider credentials in Cloudflare/GitHub secrets, never Vite metadata or tracked configuration. Optional `FRONTEND_URL` and `FRONTEND_PAGES_BASE` retain legacy error/interstitial pages only; they are not used to serve the normal UI.
+
 ### Prerequisites
 
 - A Cloudflare account with Workers enabled

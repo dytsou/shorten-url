@@ -1,4 +1,4 @@
-name: Deploy to GitHub Pages
+name: Deploy documentation to GitHub Pages
 
 on:
   push:
@@ -28,53 +28,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "24"
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Install frontend dependencies
-        working-directory: frontend
-        run: pnpm install --no-frozen-lockfile --ignore-scripts
-
       - name: Handle CNAME
         env:
           DISPATCH_CUSTOM_DOMAIN: ${{ github.event.inputs.custom_domain }}
           SECRET_CUSTOM_DOMAIN: ${{ secrets.CUSTOM_DOMAIN }}
         run: |
-          mkdir -p frontend/public
           # Check for custom domain from workflow dispatch
           if [ -n "$DISPATCH_CUSTOM_DOMAIN" ]; then
             echo "Using custom domain from workflow dispatch"
-            printf '%s\n' "$DISPATCH_CUSTOM_DOMAIN" > frontend/public/CNAME
+            printf '%s\n' "$DISPATCH_CUSTOM_DOMAIN" > docs/CNAME
           # Check for custom domain from secrets
           elif [ -n "$SECRET_CUSTOM_DOMAIN" ]; then
             echo "Using custom domain from repository secret"
-            printf '%s\n' "$SECRET_CUSTOM_DOMAIN" > frontend/public/CNAME
+            printf '%s\n' "$SECRET_CUSTOM_DOMAIN" > docs/CNAME
           else
             echo "No custom domain specified, using default GitHub Pages URL"
-            if [ -f "frontend/public/CNAME" ]; then
-              rm frontend/public/CNAME
-              echo "Removed existing CNAME file"
-            fi
             if [ -f "docs/CNAME" ]; then
               rm docs/CNAME
               echo "Removed existing docs/CNAME file"
             fi
           fi
 
-      - name: Build frontend
-        working-directory: frontend
-        run: pnpm build
-
       - name: Assemble Pages artifact
         run: |
           mkdir -p site
           cp -R docs/. site/
-          cp -R frontend/dist/. site/
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

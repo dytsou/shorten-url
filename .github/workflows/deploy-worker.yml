@@ -1,0 +1,47 @@
+name: Deploy Worker
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: worker-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - working-directory: frontend
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm build
+      - name: Verify production prerequisites
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -f wrangler.toml
+          test -f frontend/dist/index.html
+          grep -q 'main = "src/worker.js"' wrangler.toml
+          grep -q 'directory = "./frontend/dist"' wrangler.toml
+          grep -q 'binding = "ASSETS"' wrangler.toml
+          grep -q 'workers_dev = false' wrangler.toml
+      - name: Record public asset manifest
+        run: find frontend/dist -type f -print | sort | tee worker-assets-manifest.txt
+      - name: Deploy Worker and assets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: pnpm exec wrangler deploy --config wrangler.toml
