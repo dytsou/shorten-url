@@ -9,9 +9,9 @@
 const config = {
   // Frontend Configuration
   frontend: {
-    // URL where your frontend is hosted (used by worker to serve the main page)
-    // REQUIRED: Change this to your GitHub Pages URL or custom domain
-    url: "https://yourusername.github.io/your-repo-name/",
+    // Leave empty when the Worker serves the React UI. Set this only for
+    // separately hosted legacy error/interstitial pages.
+    url: "",
 
     // Public Worker origin used by frontend/index.html for shortening and
     // protected settings when the frontend is hosted separately. Keep it in
