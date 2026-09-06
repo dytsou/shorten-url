@@ -70,7 +70,7 @@ export function createFlagRoutes({
   }
 
   async function evaluateShortening(request, path) {
-    if (request.method !== "GET" || !hasPassedAccess(request)) return null;
+    if (request.method !== "GET" || !hasPassedAccess(request, env)) return null;
     if (path !== shorteningPath) return null;
     const country = request.cf?.country;
     const decision = await adapter.evaluate(country);

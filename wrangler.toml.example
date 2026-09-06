@@ -37,6 +37,7 @@ head_sampling_rate = 1
 # FLAGSHIP_APP_ID = "REPLACE_WITH_FLAGSHIP_APP_ID"
 # CF_ACCESS_ISSUER = "https://YOURTEAM.cloudflareaccess.com"
 # CF_ACCESS_AUDIENCE = "REPLACE_WITH_ACCESS_AUDIENCE"
+# ACCESS_ALLOWED_HOSTS = "short.example.com"
 
 [observability.traces]
 enabled = true

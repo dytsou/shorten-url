@@ -1,4 +1,4 @@
-import { logError } from "./observability.js";
+import { log } from "./observability.js";
 import {
   SHORTENING_FLAG_KEY,
   fromProviderFlag,
@@ -147,11 +147,12 @@ export function createFlagshipAdapter(
       ]);
       return runtimeDecision(details, country, now() - started);
     } catch (error) {
-      logError("flagship.evaluate_failed", error);
+      const fallbackReason = error?.message?.includes("timed out") ? "timeout" : "provider_error";
+      log("warn", "flagship.evaluate_failed", { fallback_reason: fallbackReason });
       return {
         outcome: "failed",
         country: normalizedCountry,
-        fallbackReason: error?.message?.includes("timed out") ? "timeout" : "provider_error",
+        fallbackReason,
         durationMs: now() - started,
       };
     } finally {

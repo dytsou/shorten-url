@@ -25,6 +25,7 @@ export function createWorkerHandler({
       worker: config.worker,
       endpoints,
       kv: env.LINKS,
+      env,
     });
     const flagRoutes = createFlagRoutes({
       prefix: "/settings",

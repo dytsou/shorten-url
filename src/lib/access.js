@@ -1,4 +1,19 @@
-export function hasPassedAccess(request) {
+function allowedHosts(env) {
+  return new Set(
+    String(env?.ACCESS_ALLOWED_HOSTS || "")
+      .split(",")
+      .map((host) => host.trim().toLowerCase())
+      .filter(Boolean)
+  );
+}
+
+export function isAllowedAccessHost(request, env) {
+  const hosts = allowedHosts(env);
+  return hosts.size === 0 || hosts.has(new URL(request.url).hostname.toLowerCase());
+}
+
+export function hasPassedAccess(request, env) {
+  if (!isAllowedAccessHost(request, env)) return false;
   const jwt = request.headers.get("Cf-Access-Jwt-Assertion");
   const email = request.headers.get("Cf-Access-Authenticated-User-Email");
   return Boolean(jwt && email);
@@ -169,7 +184,7 @@ export async function authorizeSettingsRequest(
   env,
   { verifyToken = verifyAccessJwt, mutation = false, allowedOrigins = [] } = {}
 ) {
-  if (!hasPassedAccess(request)) return { ok: false, status: 403, reason: "access_denied" };
+  if (!hasPassedAccess(request, env)) return { ok: false, status: 403, reason: "access_denied" };
   let validJwt = false;
   try {
     validJwt = await verifyToken(request.headers.get("Cf-Access-Jwt-Assertion"), env);
