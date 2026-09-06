@@ -6,8 +6,10 @@
  *
  * Routes:
  *   OPTIONS *                -> CORS preflight
- *   POST    /                -> create short URL (protected by Cloudflare Access / WARP)
- *   GET     /                -> serve the shortener frontend
+ *   POST    /shorten         -> create short URL (protected by Cloudflare Access / WARP)
+ *   POST    /                -> compatibility create-short-URL endpoint
+ *   GET     /                -> serve the Worker-hosted shortener frontend
+ *   GET     /settings        -> serve the Access-protected settings shell
  *   GET     /<key>           -> redirect a stored short link
  */
 

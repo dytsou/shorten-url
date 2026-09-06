@@ -15,6 +15,6 @@ describe("tracked Worker runtime", () => {
     const fresh = createRuntimeConfig();
 
     expect(configured.frontend.url).toBe("https://configured.example/");
-    expect(fresh.frontend.url).toBe("http://localhost:8787/");
+    expect(fresh.frontend.url).toBe("");
   });
 });

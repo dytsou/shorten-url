@@ -1,3 +1,4 @@
+import { fetchFrontendAsset, isFrontendAssetPath } from "./assets.js";
 import { createFlagRoutes } from "./flag-routes.js";
 import { createFlagshipAdapter } from "./flagship.js";
 import { endpointsFromFrontend } from "./endpoints.js";
@@ -10,9 +11,15 @@ import { createRuntimeConfig } from "./runtime-config.js";
  * Entrypoints provide only configuration overrides; route behavior lives here
  * so the production and example Workers cannot silently diverge.
  */
-export function createWorkerHandler({ config: fixedConfig, configOverrides = {} } = {}) {
-  return async function workerHandler(request, env) {
+export function createWorkerHandler({
+  config: fixedConfig,
+  configOverrides = {},
+  flagshipAdapter,
+  verifyToken,
+} = {}) {
+  return async function workerHandler(request, env = {}) {
     const config = fixedConfig || createRuntimeConfig(env, configOverrides);
+    const requestURL = new URL(request.url);
     const endpoints = endpointsFromFrontend(config.frontend);
     const shortener = createShortener({
       worker: config.worker,
@@ -25,11 +32,12 @@ export function createWorkerHandler({ config: fixedConfig, configOverrides = {} 
       pageUrl: endpoints.shortenPage,
       shortener,
       env,
-      adapter: createFlagshipAdapter(env),
+      adapter: flagshipAdapter || createFlagshipAdapter(env),
+      verifyToken,
+      fetchSettingsShell: (shellRequest) => fetchFrontendAsset(env, shellRequest),
     });
 
-    const requestURL = new URL(request.url);
-    const [, path] = requestURL.pathname.split("/");
+    const path = requestURL.pathname.split("/")[1] || "";
     const params = requestURL.search;
 
     if (request.method === "OPTIONS") {
@@ -40,12 +48,23 @@ export function createWorkerHandler({ config: fixedConfig, configOverrides = {} 
     if (request.method === "POST") {
       return shortener.handleShorten(request, requestURL, {
         apiPath: requestURL.pathname,
-        allowedApiPaths: ["/"],
+        allowedApiPaths: ["/", "/shorten"],
       });
     }
     const variantResponse = await flagRoutes.evaluateShortening(request, requestURL.pathname);
     if (variantResponse) return variantResponse;
-    if (!path) return shortener.fetchHostedPage(endpoints.shortenPage);
+    if (requestURL.pathname === "/") return fetchFrontendAsset(env, request, "/");
+    if (isFrontendAssetPath(requestURL.pathname)) {
+      return fetchFrontendAsset(env, request, requestURL.pathname);
+    }
+    if (
+      requestURL.pathname === "/api" ||
+      requestURL.pathname.startsWith("/api/") ||
+      requestURL.pathname === "/shorten" ||
+      requestURL.pathname.startsWith("/shorten/")
+    ) {
+      return shortener.jsonResponse({ status: 404, message: "API route not found" }, 404);
+    }
     return shortener.handleShortUrlRedirect(path, params);
   };
 }

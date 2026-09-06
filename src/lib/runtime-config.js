@@ -1,6 +1,6 @@
 const DEFAULT_FRONTEND = {
-  url: "http://localhost:8787/",
-  pagesBase: "http://localhost:8787/",
+  url: "",
+  pagesBase: "",
   workerOrigin: "",
   displayDomain: null,
   theme: "",

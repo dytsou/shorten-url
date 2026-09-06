@@ -13,6 +13,12 @@ function withHostedPageBase(html, url) {
 }
 
 async function fetchHostedPage(url, status = 200) {
+  if (!url) {
+    return new Response("Page is not configured", {
+      status,
+      headers: { "content-type": "text/plain;charset=UTF-8" },
+    });
+  }
   const upstream = await fetch(url, { redirect: "follow" });
   const html = withHostedPageBase(await upstream.text(), url);
   return new Response(html, {
@@ -22,6 +28,12 @@ async function fetchHostedPage(url, status = 200) {
 }
 
 async function fetchInterstitial(url, destination) {
+  if (!url) {
+    return new Response("Redirect interstitial is not configured", {
+      status: 503,
+      headers: { "content-type": "text/plain;charset=UTF-8" },
+    });
+  }
   const upstream = await fetch(url);
   const html = (await upstream.text()).replace(/{Replace}/gm, destination);
   return new Response(html, { headers: { "content-type": "text/html;charset=UTF-8" } });

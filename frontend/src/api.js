@@ -100,7 +100,7 @@ export function createFrontendConfig({
 export function isSettingsRoute(pathname, settingsPath) {
   const currentPath = normalizePath(pathname, "/");
   const configuredPath = normalizePath(settingsPath, DEFAULT_SETTINGS_PATH);
-  return currentPath === configuredPath;
+  return currentPath === configuredPath || currentPath.startsWith(`${configuredPath}/`);
 }
 
 export function workerUrl(path, config) {

@@ -23,6 +23,7 @@ export function createFlagRoutes({
   adapter,
   verifyToken,
   allowedOrigins = [],
+  fetchSettingsShell,
 }) {
   const settingsPrefix = normalizePrefix(prefix);
   const pageOrigin = originFromPageUrl(pageUrl);
@@ -38,31 +39,34 @@ export function createFlagRoutes({
     verifyToken,
     allowedOrigins: trustedOrigins,
   });
+  const renderSettingsShell = fetchSettingsShell || (() => shortener.fetchHostedPage(pageUrl));
 
   async function handleSettings(request, path) {
-    if (path === settingsPrefix) {
-      if (request.method !== "GET")
-        return shortener.errorResponse("Method not allowed", 405, request);
-      const authorization = await authorizeSettingsRequest(request, env, {
-        verifyToken,
-        allowedOrigins: trustedOrigins,
-      });
-      if (!authorization.ok)
-        return shortener.errorResponse("Access denied", authorization.status, request);
-      return shortener.fetchHostedPage(pageUrl);
-    }
     const apiPrefix = `${settingsPrefix}/api`;
-    if (!path.startsWith(`${apiPrefix}/`)) return null;
-    const suffix = path.slice(`${apiPrefix}/`.length);
-    if (suffix === "csrf") return management.handle(request, "csrf");
-    if (suffix === "flags") return management.handle(request, "flags");
-    if (suffix === "flag") return management.handle(request, "flag");
-    if (suffix === "flag/shorten-routing")
-      return management.handle(request, "flag:shorten-routing");
-    if (suffix === "flag/shorten-routing/publish") {
-      return management.handle(request, "publish:shorten-routing");
+    if (path === apiPrefix || path.startsWith(`${apiPrefix}/`)) {
+      const suffix = path === apiPrefix ? "" : path.slice(`${apiPrefix}/`.length);
+      if (suffix === "csrf") return management.handle(request, "csrf");
+      if (suffix === "flags") return management.handle(request, "flags");
+      if (suffix === "flag") return management.handle(request, "flag");
+      if (suffix === "flag/shorten-routing")
+        return management.handle(request, "flag:shorten-routing");
+      if (suffix === "flag/shorten-routing/publish") {
+        return management.handle(request, "publish:shorten-routing");
+      }
+      return management.handle(request, "unknown");
     }
-    return management.handle(request, "unknown");
+
+    if (path !== settingsPrefix && !path.startsWith(`${settingsPrefix}/`)) return null;
+    if (request.method !== "GET" && request.method !== "HEAD")
+      return shortener.errorResponse("Method not allowed", 405, request);
+
+    const authorization = await authorizeSettingsRequest(request, env, {
+      verifyToken,
+      allowedOrigins: trustedOrigins,
+    });
+    if (!authorization.ok)
+      return shortener.errorResponse("Access denied", authorization.status, request);
+    return renderSettingsShell(request);
   }
 
   async function evaluateShortening(request, path) {
