@@ -29,23 +29,6 @@ function request(url, country = "SG") {
 
 describe("Worker entrypoint parity", () => {
   beforeAll(async () => {
-    globalThis.importConfig = {
-      frontend: {
-        url: "https://frontend.example",
-      },
-      worker: {
-        no_ref: "off",
-        cors: "on",
-        unique_link: true,
-        custom_link: true,
-        safe_browsing_api_key: "",
-        min_random_key_length: 6,
-        max_custom_slug_length: 50,
-        random_chars: "abc123",
-        reserved_slugs: [],
-      },
-    };
-    globalThis.defaultConfig = globalThis.importConfig;
     ({ default: exampleWorker } = await import("../src/worker.example.js"));
   });
 
