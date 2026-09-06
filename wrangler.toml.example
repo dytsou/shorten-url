@@ -1,6 +1,15 @@
 name = "shorten-url"
 main = "src/worker.js"
 compatibility_date = "2026-01-01"
+# Production must bind this Worker to an Access-protected custom hostname.
+# Keep the default workers.dev hostname disabled in the production deployment.
+workers_dev = false
+
+[assets]
+directory = "./frontend/dist"
+binding = "ASSETS"
+run_worker_first = true
+not_found_handling = "none"
 
 [[kv_namespaces]]
 binding = "LINKS"
