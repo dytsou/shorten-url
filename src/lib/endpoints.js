@@ -1,13 +1,37 @@
-/** Build hosted page URLs from a frontend config object. */
-export function endpointsFromFrontend(frontend) {
-  const pagesBase = frontend.pagesBase || frontend.url;
+function httpUrl(value) {
+  if (typeof value !== "string" || !value.trim()) return null;
+
+  try {
+    const url = new URL(value);
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) {
+      return null;
+    }
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
+function pageUrl(path, base) {
+  if (!base) return null;
+  try {
+    return new URL(path, base).href;
+  } catch {
+    return null;
+  }
+}
+
+/** Build optional legacy hosted-page URLs from a frontend config object. */
+export function endpointsFromFrontend(frontend = {}) {
+  const shortenPage = httpUrl(frontend.url);
+  const pagesBase = httpUrl(frontend.pagesBase) || shortenPage;
   return {
-    shortenPage: frontend.url,
-    frontendOrigin: new URL(frontend.url).origin,
-    notFoundPage: new URL("404.html", pagesBase).href,
-    errorPage: new URL("error.html", pagesBase).href,
-    safeBrowsingWarning: new URL("safe-browsing-warning.html", pagesBase).href,
-    noRefPage: new URL("no-ref-page.html", pagesBase).href,
+    shortenPage,
+    frontendOrigin: shortenPage ? new URL(shortenPage).origin : null,
+    notFoundPage: pageUrl("404.html", pagesBase),
+    errorPage: pageUrl("error.html", pagesBase),
+    safeBrowsingWarning: pageUrl("safe-browsing-warning.html", pagesBase),
+    noRefPage: pageUrl("no-ref-page.html", pagesBase),
     safeBrowsing: "https://safebrowsing.googleapis.com/v4/threatMatches:find",
   };
 }

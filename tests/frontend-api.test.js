@@ -28,6 +28,25 @@ function documentWithMeta(values) {
 }
 
 describe("frontend API configuration", () => {
+  it("uses same-origin Worker paths when the shell is hosted at the root", () => {
+    const config = createFrontendConfig({
+      windowRef: {
+        location: { origin: "https://short.example", pathname: "/" },
+      },
+      documentRef: documentWithMeta({
+        "shorten-url-home-path": "/",
+        "shorten-url-settings-path": "/settings",
+        "shorten-url-shorten-path": "/shorten",
+      }),
+    });
+
+    expect(config.workerOrigin).toBe("https://short.example");
+    expect(config.homePath).toBe("/");
+    expect(config.settingsPath).toBe("/settings");
+    expect(config.shortenApiPath).toBe("/shorten");
+    expect(workerUrl(config.shortenApiPath, config)).toBe("https://short.example/shorten");
+  });
+
   it("uses the configured Worker origin without confusing a GitHub Pages path for a route", () => {
     const config = createFrontendConfig({
       windowRef: {
@@ -47,6 +66,7 @@ describe("frontend API configuration", () => {
     );
     expect(isSettingsRoute("/shorten-url/", config.settingsPath)).toBe(false);
     expect(isSettingsRoute("/shorten/settings/", config.settingsPath)).toBe(true);
+    expect(isSettingsRoute("/shorten/settings/advanced", config.settingsPath)).toBe(true);
   });
 
   it("detects the development settings route when its path is not explicitly configured", () => {
