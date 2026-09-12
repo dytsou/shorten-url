@@ -30,17 +30,17 @@ jobs:
 
       - name: Handle CNAME
         env:
+          CUSTOM_DOMAIN: ${{ secrets.CUSTOM_DOMAIN }}
           DISPATCH_CUSTOM_DOMAIN: ${{ github.event.inputs.custom_domain }}
-          SECRET_CUSTOM_DOMAIN: ${{ secrets.CUSTOM_DOMAIN }}
         run: |
           # Check for custom domain from workflow dispatch
           if [ -n "$DISPATCH_CUSTOM_DOMAIN" ]; then
             echo "Using custom domain from workflow dispatch"
             printf '%s\n' "$DISPATCH_CUSTOM_DOMAIN" > docs/CNAME
           # Check for custom domain from secrets
-          elif [ -n "$SECRET_CUSTOM_DOMAIN" ]; then
-            echo "Using custom domain from repository secret"
-            printf '%s\n' "$SECRET_CUSTOM_DOMAIN" > docs/CNAME
+          elif [ -n "$CUSTOM_DOMAIN" ]; then
+            echo "Using custom domain from secrets"
+            printf '%s\n' "$CUSTOM_DOMAIN" > docs/CNAME
           else
             echo "No custom domain specified, using default GitHub Pages URL"
             if [ -f "docs/CNAME" ]; then
