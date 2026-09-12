@@ -19,12 +19,12 @@ existing shortening page and redirect behavior.
    `CF_ACCESS_JWKS_URL` is optional when the standard Access certificate URL
    is available.
 4. Deploy behind the same Cloudflare Access application that protects
-   `/shorten`. The settings page is `/shorten/settings` in the dev entrypoint
-   and `/settings` in the example entrypoint.
+   `/shorten`. Operators open `/` in the deployed Worker and switch to the Flagship tab; there is
+   no standalone settings page route.
 
 When the built `frontend/` app is deployed to GitHub Pages or another static
 host, set its `shorten-url-worker-origin` meta tag to the public Worker origin.
-The Settings link and settings API requests use that origin. Leave the tag
+The frontend tabs and settings API requests use that origin. Leave the tag
 empty when the Worker serves the page so the current origin remains the
 fallback. The origin is public and must also match `frontend.workerOrigin` in
 the local config example; do not put any Access, Flagship, or CSRF secret in

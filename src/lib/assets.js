@@ -1,5 +1,6 @@
 const ROOT_ASSET_PATHS = new Set([
   "/favicon.ico",
+  "/favicon.svg",
   "/index.html",
   "/manifest.webmanifest",
   "/robots.txt",

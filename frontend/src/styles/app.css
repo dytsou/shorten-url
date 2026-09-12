@@ -130,19 +130,38 @@ textarea:focus-visible {
   box-shadow: 0 0 0 4px rgba(216, 255, 84, 0.12);
 }
 
-.topbar__link {
-  padding: 0.7rem 0.85rem;
+.topbar__tabs {
+  display: flex;
   border: 1px solid var(--line);
-  color: var(--paper);
-  text-decoration: none;
+}
+
+.topbar__tab {
+  min-height: 38px;
+  padding: 0.55rem 0.75rem;
+  border: 0;
+  color: var(--muted);
+  background: transparent;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   transition:
-    border-color 160ms ease,
+    background 160ms ease,
     color 160ms ease;
 }
 
-.topbar__link:hover {
-  border-color: var(--acid);
+.topbar__tab + .topbar__tab {
+  border: 1px solid var(--line);
+  border-width: 0 0 0 1px;
+}
+
+.topbar__tab:hover {
   color: var(--acid);
+}
+
+.topbar__tab[aria-selected="true"] {
+  color: var(--ink);
+  background: var(--acid);
 }
 
 .main-content {
@@ -863,6 +882,16 @@ code {
 
   .topbar__meta > span:not(.online-dot) {
     display: none;
+  }
+
+  .topbar__meta {
+    gap: 0.75rem;
+  }
+
+  .topbar__tab {
+    min-height: 36px;
+    padding-inline: 0.6rem;
+    font-size: 0.6rem;
   }
 
   .main-content {

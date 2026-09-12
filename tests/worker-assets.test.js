@@ -24,6 +24,9 @@ function createAssets() {
     "/assets/main.js": new Response("console.log('asset');", {
       headers: { "content-type": "text/javascript;charset=UTF-8" },
     }),
+    "/favicon.svg": new Response("<svg></svg>", {
+      headers: { "content-type": "image/svg+xml" },
+    }),
   });
 }
 
@@ -41,7 +44,7 @@ function createHandler(options = {}) {
 }
 
 describe("Worker-hosted frontend assets", () => {
-  it("serves the root shell from the ASSETS binding", async () => {
+  it("serves the tabbed frontend shell at the root", async () => {
     const assets = createAssets();
     const worker = createHandler();
 
@@ -53,29 +56,28 @@ describe("Worker-hosted frontend assets", () => {
     expect(new URL(assets.calls[0].url).pathname).toBe("/");
   });
 
-  it("authorizes settings shell paths before delegating to ASSETS", async () => {
+  it("removes settings page routes while keeping settings APIs protected", async () => {
     const assets = createAssets();
     const verifyToken = vi.fn().mockResolvedValue(true);
     const worker = createHandler({ verifyToken });
     const environment = createEnvironment(assets);
 
-    const denied = await worker(request("/settings"), environment);
-    expect(denied.status).toBe(403);
+    const removed = await worker(request("/settings"), environment);
+    expect(removed.status).toBe(404);
+    expect((await removed.json()).message).toBe("Settings route not found");
     expect(assets.fetch).not.toHaveBeenCalled();
 
     const deniedApi = await worker(request("/settings/api/flags"), environment);
     expect(deniedApi.status).toBe(403);
     expect(assets.fetch).not.toHaveBeenCalled();
 
-    const allowed = await worker(
+    const nested = await worker(
       request("/settings/advanced", { headers: mockedAccessHeaders() }),
       environment
     );
-    expect(allowed.status).toBe(200);
-    expect(await allowed.text()).toContain("worker shell");
-    expect(verifyToken).toHaveBeenCalledWith("token", environment);
-    expect(assets.fetch).toHaveBeenCalledTimes(1);
-    expect(new URL(assets.calls[0].url).pathname).toBe("/");
+    expect(nested.status).toBe(404);
+    expect((await nested.json()).message).toBe("Settings route not found");
+    expect(assets.fetch).not.toHaveBeenCalled();
   });
 
   it("does not trust Access-like headers on an unlisted host", async () => {
@@ -90,7 +92,7 @@ describe("Worker-hosted frontend assets", () => {
       new Request("https://direct-worker.example/settings", { headers: mockedAccessHeaders() }),
       environment
     );
-    expect(settings.status).toBe(403);
+    expect(settings.status).toBe(404);
     expect(assets.fetch).not.toHaveBeenCalled();
 
     const shorten = await worker(
@@ -104,7 +106,7 @@ describe("Worker-hosted frontend assets", () => {
     expect(shorten.status).toBe(403);
   });
 
-  it("protects HEAD settings shell requests and keeps settings APIs ahead of assets", async () => {
+  it("removes HEAD settings pages and keeps settings APIs ahead of assets", async () => {
     const assets = createAssets();
     const worker = createHandler({ verifyToken: vi.fn().mockResolvedValue(true) });
     const environment = createEnvironment(assets);
@@ -113,8 +115,8 @@ describe("Worker-hosted frontend assets", () => {
       request("/settings/", { method: "HEAD", headers: mockedAccessHeaders() }),
       environment
     );
-    expect(shell.status).toBe(200);
-    expect(assets.calls[0].method).toBe("HEAD");
+    expect(shell.status).toBe(404);
+    expect(assets.fetch).not.toHaveBeenCalled();
 
     const api = await worker(
       request("/settings/api", { headers: mockedAccessHeaders() }),
@@ -122,7 +124,7 @@ describe("Worker-hosted frontend assets", () => {
     );
     expect(api.status).toBe(404);
     expect((await api.json()).message).toBe("Settings route not found");
-    expect(assets.fetch).toHaveBeenCalledTimes(1);
+    expect(assets.fetch).not.toHaveBeenCalled();
   });
 
   it("keeps APIs, redirects, and unknown paths out of the React shell", async () => {
@@ -138,6 +140,10 @@ describe("Worker-hosted frontend assets", () => {
       environment
     );
     expect(deniedShorten.status).toBe(403);
+
+    const developmentOnlyPage = await worker(request("/shorten"), environment);
+    expect(developmentOnlyPage.status).toBe(404);
+    expect((await developmentOnlyPage.json()).message).toBe("API route not found");
 
     const unknownApi = await worker(request("/api/unknown"), environment);
     expect(unknownApi.status).toBe(404);
@@ -166,6 +172,17 @@ describe("Worker-hosted frontend assets", () => {
     expect(isFrontendAssetPath("/assets/%2e%2e/secret.js")).toBe(false);
     expect(isFrontendAssetPath("/assets/main.js")).toBe(true);
     expect(assets.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("serves the SVG favicon for legacy ICO requests", async () => {
+    const assets = createAssets();
+    const worker = createHandler();
+
+    const response = await worker(request("/favicon.ico"), createEnvironment(assets));
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get("location")).toBe("https://short.example/favicon.svg");
+    expect(assets.fetch).not.toHaveBeenCalled();
   });
 
   it("returns a controlled failure when the asset binding is unavailable", async () => {

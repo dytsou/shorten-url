@@ -1,4 +1,4 @@
-import { authorizeSettingsRequest, hasPassedAccess } from "./access.js";
+import { hasPassedAccess } from "./access.js";
 import { createFlagManagement } from "./flag-management.js";
 import { flagEvaluationFields, log } from "./observability.js";
 
@@ -39,7 +39,6 @@ export function createFlagRoutes({
   adapter,
   verifyToken,
   allowedOrigins = [],
-  fetchSettingsShell,
 }) {
   const settingsPrefix = normalizePrefix(prefix);
   const pageOrigin = originFromPageUrl(pageUrl);
@@ -55,24 +54,14 @@ export function createFlagRoutes({
     verifyToken,
     allowedOrigins: trustedOrigins,
   });
-  const renderSettingsShell = fetchSettingsShell || (() => shortener.fetchHostedPage(pageUrl));
   const apiPrefix = `${settingsPrefix}/api`;
 
-  async function handleSettings(request, path) {
-    if (isPathWithin(path, apiPrefix))
-      return management.handle(request, managementRoute(path, apiPrefix));
-
+  function handleSettings(request, path) {
     if (!isPathWithin(path, settingsPrefix)) return null;
-    if (!["GET", "HEAD"].includes(request.method))
-      return shortener.errorResponse("Method not allowed", 405, request);
-
-    const authorization = await authorizeSettingsRequest(request, env, {
-      verifyToken,
-      allowedOrigins: trustedOrigins,
-    });
-    if (!authorization.ok)
-      return shortener.errorResponse("Access denied", authorization.status, request);
-    return renderSettingsShell(request);
+    if (!isPathWithin(path, apiPrefix)) {
+      return shortener.jsonResponse({ status: 404, message: "Settings route not found" }, 404);
+    }
+    return management.handle(request, managementRoute(path, apiPrefix));
   }
 
   async function evaluateShortening(request, path) {
@@ -84,5 +73,5 @@ export function createFlagRoutes({
     return decision.outcome === "matched" ? Response.redirect(decision.destination, 302) : null;
   }
 
-  return { settingsPrefix, handleSettings, evaluateShortening };
+  return { handleSettings, evaluateShortening };
 }

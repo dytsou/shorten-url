@@ -38,7 +38,7 @@ pnpm build
 pnpm dev
 ```
 
-`pnpm dev`, `pnpm preview`, and `pnpm deploy` build `frontend/dist` before running Wrangler. The default UI makes same-origin requests to `POST /shorten` and `/settings`; `POST /` remains a compatibility endpoint.
+`pnpm dev`, `pnpm preview`, and `pnpm deploy` build `frontend/dist` before running Wrangler. The deployed Worker serves the UI at `GET /`; the frontend development route may use `/shorten`. In either case, the Shorten and Flagship views switch with frontend tabs. The UI makes same-origin requests to `POST /shorten` and `/settings/api/*`; `POST /` remains a compatibility endpoint. Standalone settings pages are not exposed.
 
 Production must use an Access-protected custom hostname, set `workers_dev = false`, and set `ACCESS_ALLOWED_HOSTS` to that hostname. Keep `CLOUDFLARE_API_TOKEN`, `FLAGSHIP_CSRF_SECRET`, and provider credentials in Cloudflare/GitHub secrets, never Vite metadata or tracked configuration. Optional `FRONTEND_URL` and `FRONTEND_PAGES_BASE` retain legacy error/interstitial pages only; they are not used to serve the normal UI.
 
@@ -101,13 +101,13 @@ The Worker returns short URLs using the request's origin, so configure its publi
 
 ### Frontend Configuration
 
-| Option                | Description                                                                 | Default  |
-| --------------------- | --------------------------------------------------------------------------- | -------- |
-| `frontend.url`        | Optional origin for legacy error and interstitial pages                    | `""`     |
-| `frontend.pagesBase`  | Base URL for hosted error and interstitial pages                            | `url`    |
-| `frontend.workerOrigin` | Public Worker origin for a separately hosted frontend                      | `""`     |
-
-The `frontend.displayDomain` and `frontend.theme` values in the configuration are not read by the current static page or Worker.
+| Option                   | Description                                                       | Default |
+| ------------------------ | ----------------------------------------------------------------- | ------- |
+| `frontend.url`           | Optional origin for legacy error and interstitial pages           | `""`    |
+| `frontend.pagesBase`      | Base URL for hosted error and interstitial pages                  | `url`   |
+| `frontend.workerOrigin`  | Public Worker origin for a separately hosted frontend             | `""`    |
+| `frontend.displayDomain` | Domain shown in UI (null = auto-detect)                           | `null`  |
+| `frontend.theme`         | UI theme selection                                                | `""`    |
 
 ### Worker Configuration
 

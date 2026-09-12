@@ -3,12 +3,13 @@ import {
   createFrontendConfig,
   createShorteningFlag,
   errorMessage,
-  isSettingsRoute,
   loadSettings,
+  nextWorkspaceTab,
   publishShorteningFlag,
   shortenUrl,
   updateShorteningFlag,
   workerUrl,
+  WORKSPACE_TABS,
 } from "./api.js";
 import "./styles/app.css";
 
@@ -130,9 +131,16 @@ async function copyText(value) {
   await navigator.clipboard.writeText(value);
 }
 
-function Header({ config, settingsPage }) {
-  const settingsHref = workerUrl(config.settingsPath, config);
+function Header({ config, activeTab, onTabChange }) {
   const homeHref = workerUrl(config.homePath, config);
+
+  function handleTabKeyDown(event) {
+    const nextTab = nextWorkspaceTab(activeTab, event.key);
+    if (!nextTab) return;
+    event.preventDefault();
+    onTabChange(nextTab);
+    document.getElementById(`${nextTab}-tab`)?.focus();
+  }
 
   return (
     <header className="topbar">
@@ -143,9 +151,24 @@ function Header({ config, settingsPage }) {
       <div className="topbar__meta">
         <span className="online-dot" aria-hidden="true" />
         <span>EDGE LINK DESK</span>
-        <a className="topbar__link" href={settingsPage ? homeHref : settingsHref}>
-          {settingsPage ? "Back to desk" : "Settings"}
-        </a>
+        <div className="topbar__tabs" role="tablist" aria-label="Workspace view">
+          {WORKSPACE_TABS.map(({ id: tab, label }) => (
+            <button
+              id={`${tab}-tab`}
+              className="topbar__tab"
+              type="button"
+              role="tab"
+              aria-controls={`${tab}-panel`}
+              aria-selected={activeTab === tab}
+              tabIndex={activeTab === tab ? 0 : -1}
+              key={tab}
+              onClick={() => onTabChange(tab)}
+              onKeyDown={handleTabKeyDown}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
     </header>
   );
@@ -573,6 +596,15 @@ function SettingsPage({ config }) {
     let cancelled = false;
     setPhase("loading");
     setStatus({ tone: "neutral", message: "Loading settings…" });
+    if (config.isLocalDevelopment) {
+      setPhase("error");
+      setStatus({
+        tone: "error",
+        message:
+          "Flagship settings require the protected Worker host. Set VITE_WORKER_ORIGIN to use them from localhost.",
+      });
+      return undefined;
+    }
     loadSettings(config)
       .then(({ csrfToken: nextToken, flag }) => {
         if (cancelled) return;
@@ -712,7 +744,7 @@ function SettingsPage({ config }) {
                 className="button button--quiet"
                 type="button"
                 onClick={() => setReloadKey((key) => key + 1)}
-                disabled={Boolean(busy)}
+                disabled={Boolean(busy) || config.isLocalDevelopment}
               >
                 Reload
               </button>
@@ -791,14 +823,34 @@ function SettingsPage({ config }) {
 
 export default function App() {
   const config = useMemo(() => createFrontendConfig(), []);
-  const pathname = typeof window === "undefined" ? "/" : window.location.pathname;
-  const settingsPage = isSettingsRoute(pathname, config.settingsPath);
+  const [activeTab, setActiveTab] = useState("shorten");
+  const [settingsVisited, setSettingsVisited] = useState(false);
+
+  function selectTab(tab) {
+    setActiveTab(tab);
+    if (tab === "settings") setSettingsVisited(true);
+  }
 
   return (
     <div className="app-shell">
-      <Header config={config} settingsPage={settingsPage} />
+      <Header config={config} activeTab={activeTab} onTabChange={selectTab} />
       <main className="main-content">
-        {settingsPage ? <SettingsPage config={config} /> : <ShortenerPage config={config} />}
+        <section
+          id="shorten-panel"
+          role="tabpanel"
+          aria-labelledby="shorten-tab"
+          hidden={activeTab !== "shorten"}
+        >
+          <ShortenerPage config={config} />
+        </section>
+        <section
+          id="settings-panel"
+          role="tabpanel"
+          aria-labelledby="settings-tab"
+          hidden={activeTab !== "settings"}
+        >
+          {settingsVisited ? <SettingsPage config={config} /> : null}
+        </section>
       </main>
       <footer className="footer">
         <span>SHORTEN.URL / EDGE UTILITY</span>

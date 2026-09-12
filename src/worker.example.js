@@ -8,8 +8,8 @@
  *   OPTIONS *                -> CORS preflight
  *   POST    /shorten         -> create short URL (protected by Cloudflare Access / WARP)
  *   POST    /                -> compatibility create-short-URL endpoint
- *   GET     /                -> serve the Worker-hosted shortener frontend
- *   GET     /settings        -> serve the Access-protected settings shell
+ *   GET     /                -> serve the Worker-hosted tabbed frontend
+ *   *       /settings/api/*  -> Access-protected Flagship management API
  *   GET     /<key>           -> redirect a stored short link
  */
 

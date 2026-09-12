@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Shorten URL</title>
+  <rect width="64" height="64" rx="12" fill="#d8ff54"/>
+  <path d="M25 22h-3a10 10 0 0 0 0 20h3M39 22h3a10 10 0 0 1 0 20h-3M24 32h16" fill="none" stroke="#111c1d" stroke-linecap="round" stroke-linejoin="round" stroke-width="6"/>
+</svg>
