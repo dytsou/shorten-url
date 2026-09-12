@@ -15,6 +15,9 @@ coverage/
 *.log
 *.tsbuildinfo
 
+# Static assets
+frontend/static/
+
 # Config files that shouldn't be formatted
 *.min.js
 *.min.css

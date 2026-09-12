@@ -14,7 +14,7 @@ const config = {
     url: "",
 
     // Public Worker origin used by frontend/index.html for shortening and
-    // protected settings when the frontend is hosted separately. Keep it in
+    // protected settings APIs when the frontend is hosted separately. Keep it in
     // sync with the HTML meta tag or VITE_WORKER_ORIGIN; leave empty when the
     // Worker serves the page.
     workerOrigin: "",

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   createFrontendConfig,
-  isSettingsRoute,
   loadSettings,
+  nextWorkspaceTab,
   normalizePath,
   settingsApiUrl,
   shortenUrl,
@@ -47,6 +47,7 @@ describe("frontend API configuration", () => {
     });
 
     expect(config.workerOrigin).toBe("https://short.example");
+    expect(config.isLocalDevelopment).toBe(false);
     expect(config.homePath).toBe("/");
     expect(config.settingsPath).toBe("/settings");
     expect(config.shortenApiPath).toBe("/shorten");
@@ -60,46 +61,29 @@ describe("frontend API configuration", () => {
       },
       documentRef: documentWithMeta({
         "shorten-url-worker-origin": "https://worker.example",
-        "shorten-url-settings-path": "/shorten/settings",
+        "shorten-url-settings-path": "/settings",
       }),
     });
 
     expect(config.workerOrigin).toBe("https://worker.example");
+    expect(config.isLocalDevelopment).toBe(false);
     expect(config.homePath).toBe("/");
     expect(workerUrl("/shorten", config)).toBe("https://worker.example/shorten");
-    expect(settingsApiUrl("/csrf", config)).toBe(
-      "https://worker.example/shorten/settings/api/csrf"
-    );
-    expect(isSettingsRoute("/shorten-url/", config.settingsPath)).toBe(false);
-    expect(isSettingsRoute("/shorten/settings/", config.settingsPath)).toBe(true);
-    expect(isSettingsRoute("/shorten/settings/advanced", config.settingsPath)).toBe(true);
+    expect(settingsApiUrl("/csrf", config)).toBe("https://worker.example/settings/api/csrf");
   });
 
-  it("detects the development settings route when its path is not explicitly configured", () => {
+  it("keeps frontend and settings API paths rooted at /", () => {
     const config = createFrontendConfig({
       windowRef: {
-        location: { origin: "http://localhost:8787", pathname: "/shorten/settings" },
+        location: { origin: "http://localhost:8787", pathname: "/" },
       },
       documentRef: documentWithMeta({}),
     });
 
-    expect(config.settingsPath).toBe("/shorten/settings");
-    expect(settingsApiUrl("/flags", config)).toBe(
-      "http://localhost:8787/shorten/settings/api/flags"
-    );
-    expect(isSettingsRoute(config.pathname, config.settingsPath)).toBe(true);
-  });
-
-  it("keeps the development home and settings links under /shorten", () => {
-    const config = createFrontendConfig({
-      windowRef: {
-        location: { origin: "http://localhost:8787", pathname: "/shorten" },
-      },
-      documentRef: documentWithMeta({}),
-    });
-
-    expect(config.homePath).toBe("/shorten");
-    expect(config.settingsPath).toBe("/shorten/settings");
+    expect(config.homePath).toBe("/");
+    expect(config.isLocalDevelopment).toBe(true);
+    expect(config.settingsPath).toBe("/settings");
+    expect(settingsApiUrl("/flags", config)).toBe("http://localhost:8787/settings/api/flags");
   });
 
   it("falls back to the current origin when the public origin is invalid", () => {
@@ -110,6 +94,24 @@ describe("frontend API configuration", () => {
 
     expect(config.workerOrigin).toBe("https://pages.example");
     expect(config.workerOriginConfigured).toBe(true);
+    expect(config.isLocalDevelopment).toBe(false);
+  });
+});
+
+describe("frontend workspace tabs", () => {
+  it.each([
+    ["shorten", "ArrowRight", "settings"],
+    ["settings", "ArrowRight", "shorten"],
+    ["settings", "ArrowLeft", "shorten"],
+    ["shorten", "ArrowLeft", "settings"],
+    ["settings", "Home", "shorten"],
+    ["shorten", "End", "settings"],
+  ])("moves from %s with %s to %s", (activeTab, key, expected) => {
+    expect(nextWorkspaceTab(activeTab, key)).toBe(expected);
+  });
+
+  it("ignores unrelated keys", () => {
+    expect(nextWorkspaceTab("shorten", "Enter")).toBeNull();
   });
 });
 

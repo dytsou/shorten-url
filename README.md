@@ -32,7 +32,7 @@ pnpm build
 pnpm dev
 ```
 
-`pnpm dev`, `pnpm preview`, and `pnpm deploy` build `frontend/dist` before running Wrangler. The default UI makes same-origin requests to `POST /shorten` and `/settings`; `POST /` remains a compatibility endpoint.
+`pnpm dev`, `pnpm preview`, and `pnpm deploy` build `frontend/dist` before running Wrangler. The deployed Worker serves the UI at `GET /`; the frontend development route may use `/shorten`. In either case, the Shorten and Flagship views switch with frontend tabs. The UI makes same-origin requests to `POST /shorten` and `/settings/api/*`; `POST /` remains a compatibility endpoint. Standalone settings pages are not exposed.
 
 Production must use an Access-protected custom hostname, set `workers_dev = false`, and set `ACCESS_ALLOWED_HOSTS` to that hostname. Keep `CLOUDFLARE_API_TOKEN`, `FLAGSHIP_CSRF_SECRET`, and provider credentials in Cloudflare/GitHub secrets, never Vite metadata or tracked configuration. Optional `FRONTEND_URL` and `FRONTEND_PAGES_BASE` retain legacy error/interstitial pages only; they are not used to serve the normal UI.
 
@@ -170,7 +170,7 @@ const config = {
 | Option                   | Description                                                       | Default |
 | ------------------------ | ----------------------------------------------------------------- | ------- |
 | `frontend.url`           | Legacy error/interstitial page origin; empty for Worker-hosted UI | `""`    |
-| `frontend.workerOrigin`  | Public Worker origin used by static settings pages                | `""`    |
+| `frontend.workerOrigin`  | Public Worker origin used by a separately hosted frontend         | `""`    |
 | `frontend.displayDomain` | Domain shown in UI (null = auto-detect)                           | `null`  |
 | `frontend.theme`         | UI theme selection                                                | `""`    |
 

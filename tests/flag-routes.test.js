@@ -10,7 +10,6 @@ function shortener() {
       return new Response(JSON.stringify(payload), { status });
     },
     errorResponse: vi.fn(async (_message, status) => new Response("error", { status })),
-    fetchHostedPage: vi.fn(async (url) => new Response(url)),
   };
 }
 
@@ -24,15 +23,15 @@ function accessRequest(url) {
 }
 
 describe("Flagship route adapters", () => {
-  it("evaluates the dev shortening page once and redirects only on a match", async () => {
+  it("evaluates the shortening page once and redirects only on a match", async () => {
     const adapter = {
       evaluate: vi
         .fn()
         .mockResolvedValue({ outcome: "matched", destination: "https://variant.example" }),
     };
     const routes = createFlagRoutes({
-      prefix: "/shorten/settings",
-      shorteningPath: "/shorten",
+      prefix: "/settings",
+      shorteningPath: "/",
       pageUrl: "https://frontend.example",
       shortener: shortener(),
       env,
@@ -40,38 +39,34 @@ describe("Flagship route adapters", () => {
       verifyToken: vi.fn().mockResolvedValue(true),
     });
 
-    const response = await routes.evaluateShortening(accessRequest("/shorten"), "/shorten");
+    const response = await routes.evaluateShortening(accessRequest("/"), "/");
     expect(response.status).toBe(302);
     expect(response.headers.get("location")).toBe("https://variant.example/");
     expect(adapter.evaluate).toHaveBeenCalledTimes(1);
   });
 
-  it("does not evaluate settings traffic and protects the settings page", async () => {
+  it("removes standalone settings pages without evaluating them", async () => {
     const adapter = { evaluate: vi.fn(), listFlags: vi.fn() };
-    const page = shortener();
     const routes = createFlagRoutes({
-      prefix: "/shorten/settings",
-      shorteningPath: "/shorten",
+      prefix: "/settings",
+      shorteningPath: "/",
       pageUrl: "https://frontend.example",
-      shortener: page,
+      shortener: shortener(),
       env,
       adapter,
       verifyToken: vi.fn().mockResolvedValue(true),
     });
 
-    const response = await routes.handleSettings(
-      accessRequest("/shorten/settings"),
-      "/shorten/settings"
-    );
-    expect(response.status).toBe(200);
+    const response = await routes.handleSettings(accessRequest("/settings"), "/settings");
+    expect(response.status).toBe(404);
+    expect((await response.json()).message).toBe("Settings route not found");
     expect(adapter.evaluate).not.toHaveBeenCalled();
-    expect(page.fetchHostedPage).toHaveBeenCalledWith("https://frontend.example");
 
-    const denied = await routes.handleSettings(
-      new Request("https://short.example/shorten/settings"),
-      "/shorten/settings"
+    const unauthenticated = await routes.handleSettings(
+      new Request("https://short.example/settings"),
+      "/settings"
     );
-    expect(denied.status).toBe(403);
+    expect(unauthenticated.status).toBe(404);
   });
 
   it("supports the example root convention without treating settings as a slug", async () => {
@@ -87,12 +82,12 @@ describe("Flagship route adapters", () => {
     });
     expect(await routes.evaluateShortening(accessRequest("/"), "/")).toBeNull();
     expect(adapter.evaluate).toHaveBeenCalledTimes(1);
-    expect(await routes.handleSettings(accessRequest("/settings"), "/settings")).toBeInstanceOf(
-      Response
-    );
+    const settingsPage = await routes.handleSettings(accessRequest("/settings"), "/settings");
+    expect(settingsPage.status).toBe(404);
+    expect((await settingsPage.json()).message).toBe("Settings route not found");
   });
 
-  it("allows mutations from the origin that hosts the settings page", async () => {
+  it("allows API mutations from the configured frontend origin", async () => {
     const adapter = { createFlag: vi.fn() };
     const page = shortener();
     const routes = createFlagRoutes({

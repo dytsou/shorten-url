@@ -1,7 +1,12 @@
 export const DEFAULT_SETTINGS_PATH = "/settings";
 export const DEFAULT_SHORTEN_PATH = "/shorten";
+export const WORKSPACE_TABS = [
+  { id: "shorten", label: "Shorten" },
+  { id: "settings", label: "Flagship" },
+];
 
 const FALLBACK_ORIGIN = "http://localhost";
+const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
 
 function firstNonEmpty(...values) {
   return values.find((value) => typeof value === "string" && value.trim())?.trim() || "";
@@ -37,6 +42,14 @@ function normalizeOrigin(value, fallback) {
   }
 }
 
+function isLocalOrigin(origin) {
+  try {
+    return LOCAL_HOSTNAMES.has(new URL(origin).hostname);
+  } catch {
+    return false;
+  }
+}
+
 function stripTrailingSlashes(pathname) {
   let end = pathname.length;
   while (end > 0 && pathname[end - 1] === "/") end -= 1;
@@ -56,6 +69,17 @@ export function normalizePath(value, fallback = "/") {
   }
 }
 
+export function nextWorkspaceTab(activeTab, key) {
+  if (key === "Home") return WORKSPACE_TABS[0].id;
+  if (key === "End") return WORKSPACE_TABS.at(-1).id;
+  if (!["ArrowLeft", "ArrowRight"].includes(key)) return null;
+
+  const currentIndex = WORKSPACE_TABS.findIndex(({ id }) => id === activeTab);
+  const direction = key === "ArrowRight" ? 1 : -1;
+  const nextIndex = (currentIndex + direction + WORKSPACE_TABS.length) % WORKSPACE_TABS.length;
+  return WORKSPACE_TABS[nextIndex].id;
+}
+
 export function createFrontendConfig({
   windowRef = typeof window === "undefined" ? undefined : window,
   documentRef = typeof document === "undefined" ? undefined : document,
@@ -68,7 +92,7 @@ export function createFrontendConfig({
   );
   const pathname = windowRef?.location?.pathname || "/";
   const currentPath = normalizePath(pathname, "/");
-  const isDevRoute = currentPath === "/shorten" || currentPath === "/shorten/settings";
+  const isDevRoute = currentPath === "/shorten";
   const defaultHomePath = isDevRoute ? "/shorten" : "/";
   const homePath = normalizePath(
     firstNonEmpty(
@@ -77,13 +101,12 @@ export function createFrontendConfig({
     ),
     defaultHomePath
   );
-  const defaultSettingsPath = isDevRoute ? "/shorten/settings" : DEFAULT_SETTINGS_PATH;
   const settingsPath = normalizePath(
     firstNonEmpty(
       readEnv(env, "VITE_WORKER_SETTINGS_PATH"),
       readMeta(documentRef, "shorten-url-settings-path")
     ),
-    defaultSettingsPath
+    DEFAULT_SETTINGS_PATH
   );
   const shortenApiPath = normalizePath(
     firstNonEmpty(
@@ -92,21 +115,16 @@ export function createFrontendConfig({
     ),
     DEFAULT_SHORTEN_PATH
   );
+  const workerOrigin = normalizeOrigin(configuredOrigin, currentOrigin);
 
   return {
-    workerOrigin: normalizeOrigin(configuredOrigin, currentOrigin),
+    workerOrigin,
     workerOriginConfigured: Boolean(configuredOrigin),
+    isLocalDevelopment: isLocalOrigin(currentOrigin) && !configuredOrigin,
     homePath,
     settingsPath,
     shortenApiPath,
-    pathname,
   };
-}
-
-export function isSettingsRoute(pathname, settingsPath) {
-  const currentPath = normalizePath(pathname, "/");
-  const configuredPath = normalizePath(settingsPath, DEFAULT_SETTINGS_PATH);
-  return currentPath === configuredPath || currentPath.startsWith(`${configuredPath}/`);
 }
 
 export function workerUrl(path, config) {

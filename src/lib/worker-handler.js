@@ -35,7 +35,6 @@ export function createWorkerHandler({
       env,
       adapter: flagshipAdapter || createFlagshipAdapter(env),
       verifyToken,
-      fetchSettingsShell: (shellRequest) => fetchFrontendAsset(env, shellRequest),
     });
 
     const path = requestURL.pathname.split("/")[1] || "";
@@ -44,7 +43,7 @@ export function createWorkerHandler({
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: shortener.htmlHeaders() });
     }
-    const settingsResponse = await flagRoutes.handleSettings(request, requestURL.pathname);
+    const settingsResponse = flagRoutes.handleSettings(request, requestURL.pathname);
     if (settingsResponse) return settingsResponse;
     if (request.method === "POST") {
       return shortener.handleShorten(request, requestURL, {
@@ -55,6 +54,9 @@ export function createWorkerHandler({
     const variantResponse = await flagRoutes.evaluateShortening(request, requestURL.pathname);
     if (variantResponse) return variantResponse;
     if (requestURL.pathname === "/") return fetchFrontendAsset(env, request, "/");
+    if (requestURL.pathname === "/favicon.ico") {
+      return Response.redirect(new URL("/favicon.svg", request.url), 302);
+    }
     if (isFrontendAssetPath(requestURL.pathname)) {
       return fetchFrontendAsset(env, request, requestURL.pathname);
     }
