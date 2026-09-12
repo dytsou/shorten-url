@@ -63,12 +63,14 @@ jobs:
 
       - name: Check if version exists on GitHub Packages
         id: check-github
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=${{ steps.package-version.outputs.version }}
           PACKAGE_NAME=${{ steps.package-name.outputs.name }}
           SCOPE=$(echo $PACKAGE_NAME | cut -d'/' -f1)
           npm config set $SCOPE:registry https://npm.pkg.github.com
-          npm config set //npm.pkg.github.com/:_authToken ${{ secrets.GITHUB_TOKEN }}
+          npm config set //npm.pkg.github.com/:_authToken "$NODE_AUTH_TOKEN"
           if npm view $PACKAGE_NAME@$VERSION version --registry=https://npm.pkg.github.com >/dev/null 2>&1; then
             echo "exists=true" >> $GITHUB_OUTPUT
             echo "Version $VERSION already exists on GitHub Packages, will skip GitHub Packages publish"
@@ -99,7 +101,7 @@ jobs:
           SCOPE=$(echo $PACKAGE_NAME | cut -d'/' -f1)
           npm config set $SCOPE:registry https://registry.npmjs.org
           npm config set registry https://registry.npmjs.org
-          npm config set //registry.npmjs.org/:_authToken ${{ secrets.NPM_TOKEN }}
+          npm config set //registry.npmjs.org/:_authToken "$NODE_AUTH_TOKEN"
           pnpm publish --access public --no-git-checks --registry https://registry.npmjs.org || {
             if npm view $PACKAGE_NAME@${{ steps.package-version.outputs.version }} version --registry=https://registry.npmjs.org >/dev/null 2>&1; then
               echo "Version already exists, skipping publish"
@@ -122,7 +124,7 @@ jobs:
           PACKAGE_NAME=${{ steps.package-name.outputs.name }}
           SCOPE=$(echo $PACKAGE_NAME | cut -d'/' -f1)
           npm config set $SCOPE:registry https://npm.pkg.github.com
-          npm config set //npm.pkg.github.com/:_authToken ${{ secrets.GITHUB_TOKEN }}
+          npm config set //npm.pkg.github.com/:_authToken "$NODE_AUTH_TOKEN"
           pnpm publish --no-git-checks --registry https://npm.pkg.github.com || {
             if npm view $PACKAGE_NAME@${{ steps.package-version.outputs.version }} version --registry=https://npm.pkg.github.com >/dev/null 2>&1; then
               echo "Version already exists, skipping publish"
@@ -179,7 +181,7 @@ jobs:
 
       - name: Create GitHub Release
         if: steps.should-create-release.outputs.should_create == 'true'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@de2c0eb89ae2a093876385947365aca7b0e5f844 # v1
         with:
           tag_name: v${{ steps.package-version.outputs.version }}
           name: v${{ steps.package-version.outputs.version }}
