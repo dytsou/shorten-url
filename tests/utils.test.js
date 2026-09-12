@@ -7,7 +7,7 @@ const workerConfig = {
   min_random_key_length: 6,
   max_custom_slug_length: 50,
   random_chars: "ABCDEFGHJKMNPQRSTWXYZabcdefhijkmnprstwxyz2345678",
-  reserved_slugs: ["api", "admin", "www", "mail", "ftp", "localhost", "password"],
+  reserved_slugs: ["api", "admin", "www", "mail", "ftp", "localhost", "password", "settings"],
 };
 
 const allowedChars = new Set(workerConfig.random_chars);
@@ -40,7 +40,7 @@ describe("Custom Slug Validation", () => {
     }
   );
 
-  it.each(["my link", "my@link", "my.link", "", "a".repeat(51), "api", "ADMIN"])(
+  it.each(["my link", "my@link", "my.link", "", "a".repeat(51), "api", "ADMIN", "settings"])(
     "rejects invalid slug %s",
     (slug) => {
       expect(isValidCustomSlug(slug, workerConfig)).toBe(false);

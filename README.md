@@ -11,16 +11,40 @@ A modern, fast URL shortener built with Cloudflare Workers and a responsive web 
 - **Fast Performance**: Built on Cloudflare Workers for global edge deployment
 - **Security Features**: URL validation, rate limiting, and optional Safe Browsing integration
 - **Modern Copy Function**: One-click copying with fallbacks for all browsers
-- **Custom Error Pages**: Beautiful 404, security warning, and redirect pages (fully customizable via your GitHub Pages)
+- **Custom Error Pages**: Beautiful 404, security warning, and redirect pages (fully customizable via the documentation site)
 - **API Documentation**: Interactive Swagger UI with OpenAPI 3.1.0 specification
 - **Analytics Ready**: Optional click tracking and analytics integration
 
 ## Quick Start
 
+### Worker-hosted React frontend
+
+The product UI is React source in `frontend/`, compiled to `frontend/dist`, and served by the Worker through its `ASSETS` binding. Worker routing and APIs remain in `src/`; the GitHub Pages deployment is documentation-only. `docs/index.html` is not a product asset.
+
+For a clean local setup, install both declared packages and use the root commands:
+
+```bash
+pnpm install --frozen-lockfile --ignore-scripts
+pnpm --dir frontend install --frozen-lockfile --ignore-scripts
+cp wrangler.toml.example wrangler.toml
+# Set a real LINKS namespace and production-only Access values in wrangler.toml or secrets.
+pnpm build
+pnpm dev
+```
+
+`pnpm dev`, `pnpm preview`, and `pnpm deploy` build `frontend/dist` before running Wrangler. The deployed Worker serves the UI at `GET /`; the frontend development route may use `/shorten`. In either case, the Shorten and Flagship views switch with frontend tabs. The UI makes same-origin requests to `POST /shorten` and `/settings/api/*`; `POST /` remains a compatibility endpoint. Standalone settings pages are not exposed.
+
+Production must use an Access-protected custom hostname, set `workers_dev = false`, and set `ACCESS_ALLOWED_HOSTS` to that hostname. Keep `CLOUDFLARE_API_TOKEN`, `FLAGSHIP_CSRF_SECRET`, and provider credentials in Cloudflare/GitHub secrets, never Vite metadata or tracked configuration. Optional `FRONTEND_URL` and `FRONTEND_PAGES_BASE` retain legacy error/interstitial pages only; they are not used to serve the normal UI.
+
+The Worker deployment workflow reads the non-secret GitHub environment/repository
+variables `LINKS_KV_NAMESPACE_ID` and `ACCESS_ALLOWED_HOSTS`, plus the
+`CLOUDFLARE_API_TOKEN` secret, to create its ignored `wrangler.toml` at build
+time.
+
 ### Prerequisites
 
 - A Cloudflare account with Workers enabled
-- GitHub account for hosting the frontend (or any static hosting)
+- GitHub account for hosting the documentation and optional legacy error pages
 - Basic knowledge of Git and command line
 
 ### 1. Clone the Repository
@@ -45,26 +69,51 @@ Update the `config/config.js` file with your settings:
 ```javascript
 const config = {
   frontend: {
-    // IMPORTANT: Update this to your GitHub Pages URL or custom domain
-    url: "https://yourusername.github.io/shorten-url/",
+    // Leave empty when the Worker serves the React UI. Set this only when
+    // using separately hosted legacy error/interstitial pages.
+    url: "",
+    workerOrigin: "",
   },
   // ... other settings
 };
 ```
 
-### 3. Deploy Frontend
+### 3. Choose the documentation deployment
 
-#### Option A: GitHub Pages (Recommended)
+The product frontend is deployed with the Worker. The Pages workflow publishes
+`docs/` only, which keeps API documentation and optional legacy error pages
+separate from the Worker-hosted React application.
+
+#### Option A: GitHub Pages documentation
 
 1. Push your code to GitHub
 2. Go to your repository settings
 3. Enable GitHub Pages for the main branch
-4. Your frontend will be available at `https://yourusername.github.io/shorten-url/`
+4. Your documentation will be available at the repository's GitHub Pages URL
 
-#### Option B: Custom Domain
+If you intentionally host the React app separately, set the public Worker
+origin used by shortening and protected Flagship settings in the
+`shorten-url-worker-origin` meta tag in `frontend/index.html` (for example,
+`https://short.example`). Build the app from `frontend/` before deploying its
+`dist/` directory:
 
-1. Upload the `docs/` directory to your web hosting
-2. Update the `frontend.url` in `config/config.js` to match your domain
+```bash
+cd frontend
+aube install
+aube run build
+```
+
+Leave the origin tag empty when the Worker serves the page itself; the page
+then uses its current origin. This is a public URL, not a secret. The same
+values can be supplied at build time with `VITE_WORKER_ORIGIN`,
+`VITE_WORKER_SETTINGS_PATH`, and `VITE_WORKER_SHORTEN_PATH`. Keep the Worker
+origin in sync with `frontend.workerOrigin` in `config/config.js`.
+
+#### Option B: Separate static hosting (optional)
+
+1. Upload the built `frontend/dist/` directory to your web hosting
+2. Set `frontend.url` in the Worker environment to the public frontend origin
+   when legacy error/interstitial pages also need to be fetched there
 
 ### 4. Setup Cloudflare Workers
 
@@ -86,19 +135,13 @@ wrangler kv:namespace create "LINKS"
 
 #### Create wrangler.toml
 
-Create a `wrangler.toml` file in your project root:
+Create the local Wrangler configuration from the tracked example, then replace
+the placeholder KV namespace ID with the ID from the namespace creation command:
 
-```toml
-name = "url-shortener"
-main = "src/worker.js"
-compatibility_date = "2024-01-01"
-
-[[kv_namespaces]]
-binding = "LINKS"
-id = "your-kv-namespace-id-here"
+```bash
+cp wrangler.toml.example wrangler.toml
+$EDITOR wrangler.toml
 ```
-
-Replace `your-kv-namespace-id-here` with the ID from the KV namespace creation command.
 
 #### Deploy the Worker
 
@@ -106,9 +149,10 @@ Replace `your-kv-namespace-id-here` with the ID from the KV namespace creation c
 wrangler deploy
 ```
 
-### 5. Update Configuration
+### 5. Configure optional legacy pages
 
-After deploying, update your `config/config.js` with the worker URL:
+When using separately hosted legacy pages, set the frontend URL in the Worker
+environment. The normal React UI does not depend on this setting:
 
 ```javascript
 const config = {
@@ -123,11 +167,12 @@ const config = {
 
 ### Frontend Configuration
 
-| Option                   | Description                             | Default  |
-| ------------------------ | --------------------------------------- | -------- |
-| `frontend.url`           | URL where your frontend is hosted       | Required |
-| `frontend.displayDomain` | Domain shown in UI (null = auto-detect) | `null`   |
-| `frontend.theme`         | UI theme selection                      | `""`     |
+| Option                   | Description                                                       | Default |
+| ------------------------ | ----------------------------------------------------------------- | ------- |
+| `frontend.url`           | Legacy error/interstitial page origin; empty for Worker-hosted UI | `""`    |
+| `frontend.workerOrigin`  | Public Worker origin used by a separately hosted frontend         | `""`    |
+| `frontend.displayDomain` | Domain shown in UI (null = auto-detect)                           | `null`  |
+| `frontend.theme`         | UI theme selection                                                | `""`    |
 
 ### Worker Configuration
 
@@ -160,7 +205,7 @@ const config = {
 
 ### Custom Domain
 
-1. Add a custom domain in Cloudflare Workers dashboard
+1. Add a custom domain in the Cloudflare Workers dashboard
 2. Update your DNS records to point to Cloudflare
 3. Update the worker URL in your configuration
 
@@ -348,7 +393,7 @@ If you encounter any issues or have questions:
 ## Deployment Checklist
 
 - [ ] Updated `config.js` with your settings
-- [ ] Deployed frontend to GitHub Pages or custom hosting
+- [ ] Deployed the Worker-hosted frontend (or intentionally configured separate hosting)
 - [ ] Created Cloudflare KV namespace
 - [ ] Configured `wrangler.toml` with correct KV namespace ID
 - [ ] Deployed worker using `wrangler deploy`

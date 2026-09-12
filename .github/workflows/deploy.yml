@@ -1,4 +1,4 @@
-name: Deploy to GitHub Pages
+name: Deploy documentation to GitHub Pages
 
 on:
   push:
@@ -37,7 +37,6 @@ jobs:
           if [ -n "$DISPATCH_CUSTOM_DOMAIN" ]; then
             echo "Using custom domain from workflow dispatch"
             printf '%s\n' "$DISPATCH_CUSTOM_DOMAIN" > docs/CNAME
-            cat docs/CNAME
           # Check for custom domain from secrets
           elif [ -n "$CUSTOM_DOMAIN" ]; then
             echo "Using custom domain from secrets"
@@ -46,9 +45,14 @@ jobs:
             echo "No custom domain specified, using default GitHub Pages URL"
             if [ -f "docs/CNAME" ]; then
               rm docs/CNAME
-              echo "Removed existing CNAME file"
+              echo "Removed existing docs/CNAME file"
             fi
           fi
+
+      - name: Assemble Pages artifact
+        run: |
+          mkdir -p site
+          cp -R docs/. site/
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
@@ -56,7 +60,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: "docs"
+          path: "site"
 
   deploy:
     runs-on: ubuntu-latest

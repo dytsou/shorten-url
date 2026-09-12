@@ -1,0 +1,63 @@
+name: Deploy Worker
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: worker-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - working-directory: frontend
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm build
+      - name: Prepare Wrangler config
+        env:
+          LINKS_KV_NAMESPACE_ID: ${{ vars.LINKS_KV_NAMESPACE_ID }}
+          ACCESS_ALLOWED_HOSTS: ${{ vars.ACCESS_ALLOWED_HOSTS }}
+        run: |
+          test -n "$LINKS_KV_NAMESPACE_ID"
+          test -n "$ACCESS_ALLOWED_HOSTS"
+          case "$LINKS_KV_NAMESPACE_ID" in
+            *[!a-f0-9-]*) echo "LINKS_KV_NAMESPACE_ID must contain only lowercase hex characters and hyphens" >&2; exit 1 ;;
+          esac
+          case "$ACCESS_ALLOWED_HOSTS" in
+            *[!A-Za-z0-9.,:-]*) echo "ACCESS_ALLOWED_HOSTS contains unsupported characters" >&2; exit 1 ;;
+          esac
+          cp wrangler.toml.example wrangler.toml
+          sed -i "s/your-kv-namespace-id/$LINKS_KV_NAMESPACE_ID/" wrangler.toml
+          sed -i "s/^# ACCESS_ALLOWED_HOSTS = \"short.example.com\"$/ACCESS_ALLOWED_HOSTS = \"$ACCESS_ALLOWED_HOSTS\"/" wrangler.toml
+      - name: Verify production prerequisites
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN"
+          test -f wrangler.toml
+          test -f frontend/dist/index.html
+          grep -q 'main = "src/worker.js"' wrangler.toml
+          grep -q 'directory = "./frontend/dist"' wrangler.toml
+          grep -q 'binding = "ASSETS"' wrangler.toml
+          grep -q 'workers_dev = false' wrangler.toml
+      - name: Record public asset manifest
+        run: find frontend/dist -type f -print | sort | tee worker-assets-manifest.txt
+      - name: Deploy Worker and assets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: pnpm exec wrangler deploy --config wrangler.toml
