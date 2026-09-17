@@ -243,7 +243,6 @@ function ShortenerPage({ config }) {
         <form className="shorten-card" onSubmit={handleSubmit}>
           <div className="card-topline">
             <span>NEW SHORT LINK</span>
-            <span className="card-index">/ / /</span>
           </div>
           <div className="field-group">
             <label htmlFor="long-url">Destination URL</label>
@@ -779,43 +778,6 @@ function SettingsPage({ config }) {
             {status.message}
           </p>
         </section>
-
-        <aside className="settings-aside">
-          <section className="panel aside-panel">
-            <p className="eyebrow">SAFE HAND-OFF</p>
-            <h2>
-              Draft first.
-              <br />
-              Publish second.
-            </h2>
-            <p>
-              Save checks the definition and keeps the provider version. Publish is a separate,
-              optimistic-concurrency guarded action.
-            </p>
-            <div className="aside-rule" />
-            <dl className="fact-list">
-              <div>
-                <dt>Access</dt>
-                <dd>Cloudflare Access</dd>
-              </div>
-              <div>
-                <dt>CSRF</dt>
-                <dd>{csrfToken ? "Ready" : "Waiting"}</dd>
-              </div>
-              <div>
-                <dt>Targeting</dt>
-                <dd>Country code</dd>
-              </div>
-            </dl>
-          </section>
-          <section className="panel aside-panel aside-panel--note">
-            <p className="eyebrow">OPERATING NOTE</p>
-            <p>
-              Keep the control variant live as a safe fallback. Unknown countries always use the
-              default destination.
-            </p>
-          </section>
-        </aside>
       </div>
     </>
   );
