@@ -5,16 +5,16 @@ info:
   description: |
     A modern, fast URL shortener built with Cloudflare Workers and a responsive web interface.
     - Custom slugs are supported
-    - The homepage is served at /home
+    - The homepage is served at /
     - API is available at / (POST) for shortening URLs
     - Short URL access is via /{key} (GET)
     - Custom error pages for 404, security warnings, and redirects
 
 servers:
-  - url: https://url.tsou.me
+  - url: https://your-worker-domain.example
 
 paths:
-  /shorten:
+  /:
     post:
       summary: Shorten a URL
       description: Create a new shortened URL, optionally with a custom slug.
@@ -49,7 +49,7 @@ paths:
                   short_url:
                     type: string
                     format: uri
-                    example: https://url.tsou.me/abc123
+                    example: https://your-worker-domain.example/abc123
         "400":
           description: Bad request
           content:
@@ -63,6 +63,18 @@ paths:
                   message:
                     type: string
                     example: Invalid URL format
+        "403":
+          description: Cloudflare Access headers are missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Invalid API path
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Server error
           content:
@@ -76,6 +88,21 @@ paths:
                   message:
                     type: string
                     example: Server error
+    get:
+      summary: Get homepage
+      description: Fetches the configured URL shortener frontend.
+      responses:
+        "200":
+          description: Homepage HTML
+          content:
+            text/html:
+              schema:
+                type: string
+    options:
+      summary: Handle CORS preflight
+      responses:
+        "204":
+          description: Preflight response
 
   /{key}:
     get:
@@ -103,19 +130,6 @@ paths:
             text/html:
               schema:
                 type: string
-
-  /home:
-    get:
-      summary: Get homepage
-      description: Serves the URL shortener frontend
-      responses:
-        "200":
-          description: Homepage HTML
-          content:
-            text/html:
-              schema:
-                type: string
-              example: URL shortener frontend with form interface
 
 components:
   schemas:

@@ -1,9 +1,8 @@
 /**
- * URL Shortener Configuration Example
+ * URL Shortener deployment configuration
  *
- * Copy this file to config.js and modify the values according to your setup.
- * This file should be committed to your repository as a template.
- * The actual config.js file should be added to .gitignore to keep your secrets safe.
+ * Set frontend.url to the public static homepage that the Worker should serve.
+ * Keep private credentials out of this tracked file.
  */
 
 const config = {
@@ -107,12 +106,4 @@ const config = {
   },
 };
 
-// Export for use in other files
-if (typeof module !== "undefined" && module.exports) {
-  module.exports = config;
-}
-
-// Make available globally for browser usage
-if (typeof window !== "undefined") {
-  window.APP_CONFIG = config;
-}
+export default config;

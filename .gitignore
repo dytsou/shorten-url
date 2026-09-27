@@ -1,4 +1,4 @@
-# Configuration files (contains sensitive data)
+# Local-only configuration files on the source branch
 config.js
 
 # Environment files
@@ -10,7 +10,6 @@ config.js
 
 # Wrangler (Cloudflare Workers CLI) files
 .wrangler/
-wrangler.toml
 
 # Node.js dependencies
 node_modules/
