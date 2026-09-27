@@ -24,94 +24,61 @@ The Worker does not implement click analytics, per-IP rate limiting, or blocked-
 
 ### Prerequisites
 
-- A Cloudflare account with Workers enabled; the Deploy to Cloudflare button provisions the required KV namespace
-- Node.js 24 or newer and pnpm 10.22.0
-- A GitHub account for GitHub Pages (optional; any static host can serve `docs/`)
-- Basic knowledge of Git and command line
+- A Cloudflare account with Workers and Pages; the Deploy to Cloudflare button provisions the required KV namespace
+- A GitHub or GitLab account to receive the repository created by the Deploy to Cloudflare button
+- A Cloudflare Pages project to publish `docs/`
+- Node.js 24 or newer and pnpm 10.22.0 for manual deployment
 
-### 1. Clone the Repository
+### 1. Deploy with Cloudflare (Recommended)
+
+1. Click the **Deploy to Cloudflare** button near the top of this README.
+2. Connect your Cloudflare and GitHub or GitLab accounts, then choose the destination repository and Worker name.
+3. Confirm the `LINKS` KV binding. Cloudflare provisions the namespace and deploys the Worker from the `main` branch.
+
+The button deploys the Worker; it does not publish the static homepage in `docs/`. Connect the created repository to Cloudflare Pages, leave the build command blank, and set the output directory to `docs`. Then set `frontend.url` in `config/config.js` to the Pages URL and push the change to redeploy the Worker. The Worker fetches the static homepage and serves it at `/`, so the form submits to `POST /` on the Worker.
+
+### 2. Alternative: Manual Worker Deployment
+
+Clone the repository and install the pinned Wrangler version:
 
 ```bash
 git clone https://github.com/dytsou/shorten-url.git
 cd shorten-url
+corepack enable
+pnpm install
 ```
 
-### 2. Setup Configuration
-
-```bash
-# Edit the deployment configuration
-vim config/config.js
-```
-
-Set `frontend.url` in `config/config.js` to the public static homepage URL:
+Set `frontend.url` in `config/config.js` to the public URL where you host `docs/`. The Worker fetches this page for `GET /`:
 
 ```javascript
 const config = {
   frontend: {
-    // Static frontend URL fetched by the Worker for GET /
-    url: "https://yourusername.github.io/shorten-url/",
+    url: "https://your-project.pages.dev/",
   },
   // Configure worker options here
 };
 ```
 
-`src/worker.js` imports `config/config.js` directly. Keep API keys out of this tracked file; configure the optional Google Safe Browsing key with a Wrangler secret.
+`src/worker.js` imports `config/config.js` directly. Keep API keys out of this file; configure the optional Google Safe Browsing key with a Wrangler secret.
 
-### 3. Deploy Frontend
-
-#### Option A: GitHub Pages (Recommended)
-
-1. Push your code to GitHub
-2. Set the repository's Pages source to **GitHub Actions**
-3. The workflow publishes `docs/` on pushes to the `production` branch
-4. Set `frontend.url` to the published homepage URL
-
-The `main` branch serves the sample page from `docs/index.html`; its form submits to `POST /`. Your repository-specific homepage stays on the `production` branch, so the one-click deploy uses the sample rather than your personal page.
-
-The **Deploy to Cloudflare** button imports the default `main` branch. It deploys the Worker; host `docs/` separately and set `frontend.url` to that hosted homepage.
-
-#### Option B: Custom Domain
-
-1. Upload the `docs/` directory to your static host
-2. Set `frontend.url` in your Worker configuration to the hosted homepage URL
-3. For custom error/interstitial pages, set `frontend.pagesBase` to the directory containing those files
-
-### 4. Setup Cloudflare Workers
-
-#### Install Wrangler CLI
+Install Wrangler, log in, and deploy:
 
 ```bash
-corepack enable
-pnpm install
-```
-
-The project uses the Wrangler version installed from `package.json`.
-
-#### Configure Wrangler
-
-```bash
-# Login to Cloudflare
 pnpm exec wrangler login
-
-# Optional for manual Wrangler deployment; the Deploy button provisions this binding
-pnpm exec wrangler kv namespace create LINKS
-```
-
-See the [Wrangler login](https://developers.cloudflare.com/workers/wrangler/commands/general/) and [KV command](https://developers.cloudflare.com/workers/wrangler/commands/kv/) references.
-
-#### Create wrangler.toml
-
-`wrangler.toml`, `src/worker.js`, and `config/config.js` are included in this branch. The `LINKS` binding omits an account-specific namespace ID so the Deploy to Cloudflare flow can provision it. For a manual deployment with an existing namespace, set its ID in `wrangler.toml`.
-
-#### Deploy the Worker
-
-```bash
 pnpm deploy
 ```
 
-### 5. Update Configuration
+The `LINKS` binding in `wrangler.toml` omits an account-specific namespace ID so Wrangler can provision it. To use an existing KV namespace, create it with `pnpm exec wrangler kv namespace create LINKS` and set its ID in `wrangler.toml` before deploying.
 
-Set `frontend.url` to the static homepage that the Worker should fetch for `GET /`. It should be the hosted page URL, not the Worker URL. The Worker returns short URLs using the request's origin, so configure your Worker domain in Cloudflare separately.
+### 3. Deploy the Frontend to Cloudflare Pages
+
+The `main` branch includes a sample page at `docs/index.html`. To create your own Pages site, connect your repository to Cloudflare Pages, set the production branch to the branch containing your homepage, leave the build command blank, and use `docs` as the output directory.
+
+This repository's Cloudflare Pages project publishes `docs/` from the `production` branch. The `main` branch remains the one-click Worker template. Set `frontend.url` to your Pages URL so the Worker can serve the hosted homepage at `/`.
+
+For custom error and interstitial pages, set `frontend.pagesBase` to the directory containing those files.
+
+The Worker returns short URLs using the request's origin, so configure its public domain in Cloudflare separately from `frontend.url`.
 
 ## ⚙️ Configuration Options
 
@@ -157,9 +124,9 @@ The `frontend.displayDomain` and `frontend.theme` values in the configuration ar
 
 ### Custom Domain
 
-1. Add a custom domain to the Cloudflare Worker
-2. Update your DNS records to point to Cloudflare
-3. Set `frontend.url` to the static homepage URL; the Worker domain is configured separately in Cloudflare
+1. Add a custom domain to the Cloudflare Pages project for the static site.
+2. Add a domain to the Cloudflare Worker separately for the shortening API.
+3. Set `frontend.url` to the Cloudflare Pages URL; Pages and Worker domains are configured independently.
 
 ### Google Safe Browsing
 
@@ -341,7 +308,7 @@ If you encounter any issues or have questions:
 ## Deployment Checklist
 
 - [ ] Set `frontend.url` and the `LINKS` KV namespace in the deployment configuration
-- [ ] Deployed frontend to GitHub Pages or custom hosting
+- [ ] Deployed `docs/` to Cloudflare Pages
 - [ ] Created Cloudflare KV namespace
 - [ ] Configured `wrangler.toml` with correct KV namespace ID
 - [ ] Protected the Worker with a Cloudflare Access policy
