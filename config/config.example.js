@@ -10,8 +10,8 @@ const config = {
   // Frontend Configuration
   frontend: {
     // URL where your frontend is hosted (used by worker to serve the main page)
-    // REQUIRED: Change this to your GitHub Pages URL or custom domain
-    url: "https://yourusername.github.io/your-repo-name/",
+    // REQUIRED: Change this to your Cloudflare Pages URL or custom domain
+    url: "https://your-project.pages.dev/",
 
     // Domain displayed in the custom slug input prefix
     // If null, will use the current domain automatically

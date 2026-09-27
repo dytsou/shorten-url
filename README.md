@@ -14,7 +14,7 @@ A modern, fast URL shortener built with Cloudflare Workers and a responsive web 
 - **Fast Performance**: Built on Cloudflare Workers for global edge deployment
 - **Security Features**: URL validation, rate limiting, and optional Safe Browsing integration
 - **Modern Copy Function**: One-click copying with fallbacks for all browsers
-- **Custom Error Pages**: Beautiful 404, security warning, and redirect pages (fully customizable via your GitHub Pages)
+- **Custom Error Pages**: The Worker can fetch custom 404, security warning, and redirect pages from Cloudflare Pages
 - **API Documentation**: Interactive Swagger UI with OpenAPI 3.1.0 specification
 - **Analytics Ready**: Optional click tracking and analytics integration
 
@@ -22,8 +22,8 @@ A modern, fast URL shortener built with Cloudflare Workers and a responsive web 
 
 ### Prerequisites
 
-- A Cloudflare account with Workers enabled
-- GitHub account for hosting the frontend (or any static hosting)
+- A Cloudflare account with Workers and Pages enabled
+- A GitHub account to connect this repository to Cloudflare Pages
 - Basic knowledge of Git and command line
 
 ### 1. Clone the Repository
@@ -48,8 +48,8 @@ Update the `config/config.js` file with your settings:
 ```javascript
 const config = {
   frontend: {
-    // IMPORTANT: Update this to your GitHub Pages URL or custom domain
-    url: "https://yourusername.github.io/shorten-url/",
+    // IMPORTANT: Update this to your Cloudflare Pages URL or custom domain
+    url: "https://your-project.pages.dev/",
   },
   // ... other settings
 };
@@ -57,70 +57,36 @@ const config = {
 
 ### 3. Deploy Frontend
 
-#### Option A: GitHub Pages (Recommended)
+#### Option A: Cloudflare Pages (Recommended)
 
-1. Push your code to GitHub
-2. Go to your repository settings
-3. Enable GitHub Pages for the main branch
-4. Your frontend will be available at `https://yourusername.github.io/shorten-url/`
+1. Connect this GitHub repository to Cloudflare Pages.
+2. Set the production branch to `production`.
+3. Leave the build command blank and set the output directory to `docs`.
+4. Cloudflare Pages will publish `docs/` on pushes to `production`.
 
-#### Option B: Custom Domain
+#### Option B: Custom Domain on Cloudflare Pages
 
-1. Upload the `docs/` directory to your web hosting
-2. Update the `frontend.url` in `config/config.js` to match your domain
+1. Add a custom domain to the Cloudflare Pages project.
+2. Update `frontend.url` in `config/config.js` to the Pages URL or custom domain.
 
-### 4. Setup Cloudflare Workers
+### 4. Use the Existing Cloudflare Worker
 
-#### Install Wrangler CLI
+The existing Worker named `shorten-url` handles the shortening API, short-link redirects, and the public app hostname. Cloudflare Pages hosts the static files; the Worker fetches the homepage from `frontend.url` and serves it at `/`. Keep the existing `LINKS` KV binding attached to this Worker.
 
-```bash
-npm install -g wrangler
-```
+### 5. Point the Worker to Cloudflare Pages
 
-#### Configure Wrangler
-
-```bash
-# Login to Cloudflare
-wrangler auth login
-
-# Create a new KV namespace for storing URLs
-wrangler kv:namespace create "LINKS"
-```
-
-#### Create wrangler.toml
-
-Create a `wrangler.toml` file in your project root:
-
-```toml
-name = "url-shortener"
-main = "src/worker.js"
-compatibility_date = "2024-01-01"
-
-[[kv_namespaces]]
-binding = "LINKS"
-id = "your-kv-namespace-id-here"
-```
-
-Replace `your-kv-namespace-id-here` with the ID from the KV namespace creation command.
-
-#### Deploy the Worker
-
-```bash
-wrangler deploy
-```
-
-### 5. Update Configuration
-
-After deploying, update your `config/config.js` with the worker URL:
+Set `frontend.url` in the configuration used to deploy `shorten-url` to the public Cloudflare Pages URL:
 
 ```javascript
 const config = {
   frontend: {
-    url: "https://yourusername.github.io/shorten-url/",
+    url: "https://your-project.pages.dev/",
   },
   // ... other settings
 };
 ```
+
+The Pages URL is the Worker’s homepage source. Users visit the Worker’s public hostname; the form sends `POST /` to that same Worker. Keep the Worker hostname separate from the Pages hostname.
 
 ## ⚙️ Configuration Options
 
@@ -128,7 +94,7 @@ const config = {
 
 | Option                   | Description                             | Default  |
 | ------------------------ | --------------------------------------- | -------- |
-| `frontend.url`           | URL where your frontend is hosted       | Required |
+| `frontend.url`           | Cloudflare Pages URL fetched by the Worker for `GET /` | Required |
 | `frontend.displayDomain` | Domain shown in UI (null = auto-detect) | `null`   |
 | `frontend.theme`         | UI theme selection                      | `""`     |
 
@@ -192,13 +158,14 @@ analytics: {
 
 ### Custom Error Pages
 
-The system fetches error and redirect pages from your GitHub Pages repository, so you can fully customize their content and design:
+The Worker can fetch error and redirect pages from the Cloudflare Pages project. These files are not included in `docs/`; add them there and set `frontend.pagesBase` to the Pages base URL to customize their content:
 
-- **404 Page**: <code>https://dytsou.github.io/404.html</code>
-- **Security Warning**: <code>https://dytsou.github.io/safe-browsing-warning.html</code>
-- **No-Referrer Redirect**: <code>https://dytsou.github.io/no-ref-page.html</code>
+- **404 Page**: `404.html`
+- **Error Page**: `error.html`
+- **Security Warning**: `safe-browsing-warning.html`
+- **No-Referrer Redirect**: `no-ref-page.html`
 
-You can edit these HTML files in your GitHub Pages repo to change the look, text, or behavior at any time. The worker will always serve the latest version from your site.
+Cloudflare Pages publishes these files with the rest of `docs/`. The Worker fetches their current contents when needed.
 
 All pages feature responsive design with glassmorphism effects matching your main interface.
 
@@ -351,10 +318,9 @@ If you encounter any issues or have questions:
 ## Deployment Checklist
 
 - [ ] Updated `config.js` with your settings
-- [ ] Deployed frontend to GitHub Pages or custom hosting
-- [ ] Created Cloudflare KV namespace
-- [ ] Configured `wrangler.toml` with correct KV namespace ID
-- [ ] Deployed worker using `wrangler deploy`
+- [ ] Deployed frontend to Cloudflare Pages
+- [ ] Reused the existing `shorten-url` Worker and its `LINKS` KV binding
+- [ ] Configured the Worker to fetch the Cloudflare Pages homepage
 - [ ] Tested URL shortening functionality
 - [ ] Verified copy-to-clipboard feature works
 - [ ] Tested custom error pages (404, security warnings)
