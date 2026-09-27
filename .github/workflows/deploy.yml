@@ -2,9 +2,9 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main, master]
+    branches: [production]
   pull_request:
-    branches: [main, master]
+    branches: [production]
   workflow_dispatch:
     inputs:
       custom_domain:
@@ -61,7 +61,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    if: github.ref == 'refs/heads/production'
     permissions:
       pages: write
       id-token: write
