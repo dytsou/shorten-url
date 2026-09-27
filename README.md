@@ -24,8 +24,7 @@ The Worker does not implement click analytics, per-IP rate limiting, or blocked-
 
 ### Prerequisites
 
-- A Cloudflare account with Workers enabled
-- A Cloudflare KV namespace
+- A Cloudflare account with Workers enabled; the Deploy to Cloudflare button provisions the required KV namespace
 - Node.js 24 or newer and pnpm 10.22.0
 - A GitHub account for GitHub Pages (optional; any static host can serve `docs/`)
 - Basic knowledge of Git and command line
@@ -67,7 +66,7 @@ const config = {
 3. The workflow publishes `docs/` on pushes to the `production` branch
 4. Set `frontend.url` to the published homepage URL
 
-The `main` branch serves the sample page from `docs/index.html`; its form submits to `POST /`. The matching `docs/index.html.example` is available as a copyable template. Your repository-specific homepage stays on the `production` branch, so the one-click deploy uses the sample rather than your personal page.
+The `main` branch serves the sample page from `docs/index.html`; its form submits to `POST /`. Your repository-specific homepage stays on the `production` branch, so the one-click deploy uses the sample rather than your personal page.
 
 The **Deploy to Cloudflare** button imports the default `main` branch. It deploys the Worker; host `docs/` separately and set `frontend.url` to that hosted homepage.
 
@@ -94,7 +93,7 @@ The project uses the Wrangler version installed from `package.json`.
 # Login to Cloudflare
 pnpm exec wrangler login
 
-# Create a new KV namespace for storing URLs
+# Optional for manual Wrangler deployment; the Deploy button provisions this binding
 pnpm exec wrangler kv namespace create LINKS
 ```
 
@@ -102,7 +101,7 @@ See the [Wrangler login](https://developers.cloudflare.com/workers/wrangler/comm
 
 #### Create wrangler.toml
 
-`wrangler.toml`, `src/worker.js`, and `config/config.js` are included in this branch. For a manual deployment, create a namespace named `LINKS` and set its ID in `wrangler.toml`. The Deploy to Cloudflare flow can provision the KV binding from this configuration.
+`wrangler.toml`, `src/worker.js`, and `config/config.js` are included in this branch. The `LINKS` binding omits an account-specific namespace ID so the Deploy to Cloudflare flow can provision it. For a manual deployment with an existing namespace, set its ID in `wrangler.toml`.
 
 #### Deploy the Worker
 
@@ -268,7 +267,6 @@ shorten-url/
 │   └── worker.js            # Worker entrypoint
 ├── docs/
 │   ├── index.html          # Sample homepage (POST /)
-│   ├── index.html.example  # Copyable homepage template
 │   └── api/
 │       ├── index.html      # Swagger UI for API docs
 │       └── openapi.yaml    # OpenAPI 3.1.0 specification

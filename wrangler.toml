@@ -4,7 +4,6 @@ compatibility_date = "2026-09-27"
 
 [[kv_namespaces]]
 binding = "LINKS"
-id = "your-kv-namespace-id"
 
 [observability]
 enabled = true
