@@ -1,12 +1,12 @@
 /**
- * URL Shortener — Cloudflare Worker (template)
+ * URL Shortener - Cloudflare Worker
  *
- * Copy this file to `src/worker.js` and wire in your config (see README).
+ * Configuration is imported from `config/config.js`.
  * Requires a KV namespace bound as `LINKS`.
  *
  * Routes:
  *   OPTIONS *                -> CORS preflight
- *   POST    /                -> create short URL (protected by Cloudflare Access / WARP)
+ *   POST    /shorten         -> create short URL (protected by Cloudflare Access / WARP)
  *   GET     /                -> serve the shortener frontend
  *   GET     /<key>           -> redirect a stored short link
  */
@@ -14,33 +14,20 @@
 import { createShortener } from "./lib/shortener.js";
 import { endpointsFromFrontend } from "./lib/endpoints.js";
 import { withFetchObservability } from "./lib/observability.js";
-
-// ============================================================================
-// Configuration
-// ============================================================================
-
-let config;
-
-try {
-  if (typeof importConfig !== "undefined") {
-    config = { ...defaultConfig, ...importConfig };
-  } else {
-    throw new TypeError(
-      "Worker config is missing. Copy config/config.example.js to config/config.js and import it when building worker.js."
-    );
-  }
-} catch (error) {
-  console.error("Failed to load worker config:", error);
-  throw error;
-}
+import config from "../config/config.js";
 
 function getEndpoints() {
   return endpointsFromFrontend(config.frontend);
 }
 
-async function exampleFetchHandler(request, env) {
+async function fetchHandler(request, env) {
+  const workerConfig = {
+    ...config.worker,
+    safe_browsing_api_key:
+      env.SAFE_BROWSING_API_KEY ?? config.worker.safe_browsing_api_key,
+  };
   const shortener = createShortener({
-    worker: config.worker,
+    worker: workerConfig,
     endpoints: getEndpoints(),
     kv: env.LINKS,
   });
@@ -72,11 +59,11 @@ async function exampleFetchHandler(request, env) {
   if (request.method === "POST") {
     return shortener.handleShorten(request, requestURL, {
       apiPath: requestURL.pathname,
-      allowedApiPaths: ["/"],
+      allowedApiPaths: ["/shorten"],
     });
   }
   if (!path) return shortener.fetchHostedPage(getEndpoints().shortenPage);
   return shortener.handleShortUrlRedirect(path, params);
 }
 
-export default withFetchObservability(exampleFetchHandler);
+export default withFetchObservability(fetchHandler);

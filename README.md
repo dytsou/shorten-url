@@ -35,25 +35,7 @@ cd shorten-url
 
 ### 2. Setup Configuration
 
-```bash
-# Copy the example configuration
-cp config/config.example.js config/config.js
-
-# Edit the configuration file
-vim config/config.js
-```
-
-Update the `config/config.js` file with your settings:
-
-```javascript
-const config = {
-  frontend: {
-    // IMPORTANT: Update this to your Cloudflare Pages URL or custom domain
-    url: "https://your-project.pages.dev/",
-  },
-  // ... other settings
-};
-```
+This branch contains the production configuration in `config/config.js`. Update `frontend.url` to the Cloudflare Pages URL that hosts `docs/` before deploying the Worker. Keep private credentials in Wrangler secrets.
 
 ### 3. Deploy Frontend
 
@@ -86,7 +68,7 @@ const config = {
 };
 ```
 
-The Pages URL is the Worker’s homepage source. Users visit the Worker’s public hostname; the form sends `POST /` to that same Worker. Keep the Worker hostname separate from the Pages hostname.
+The Pages URL is the Worker’s homepage source. Users visit the Worker’s public hostname; the form sends `POST /shorten` to that same Worker. Keep the Worker hostname separate from the Pages hostname.
 
 ## ⚙️ Configuration Options
 
@@ -237,17 +219,14 @@ curl -X POST http://localhost:8787/shorten \
 ```
 shorten-url/
 ├── src/
-│   ├── worker.js           # Production Cloudflare Worker
-│   ├── worker.dev.js       # Development Cloudflare Worker
-│   └── worker.example.js   # Worker template
+│   └── worker.js           # Production Cloudflare Worker (POST /shorten)
 ├── docs/
 │   ├── index.html          # Homepage interface
 │   └── api/
 │       ├── index.html      # Swagger UI for API docs
 │       └── openapi.yaml    # OpenAPI 3.1.0 specification
 ├── config/
-│   ├── config.js           # Configuration (not in git)
-│   └── config.example.js   # Configuration template
+│   └── config.js           # Production configuration
 ├── .cursor/                # Cursor IDE rules and workflow
 ├── .github/                # GitHub workflows and templates
 ├── .gitignore             # Git ignore rules
@@ -257,12 +236,12 @@ shorten-url/
 
 ## Security Considerations
 
-- Keep your `config.js` file private (it's in `.gitignore`)
-- Use environment variables for sensitive data in production
+- Keep private API keys out of `config/config.js`; store them as Wrangler secrets
 - Enable rate limiting to prevent abuse
 - Consider enabling Google Safe Browsing for malicious URL detection
 - Regularly monitor your KV storage usage
 - Configure Cloudflare Access / WARP correctly, as URL shortening is intended to be available only to authenticated/requesters you control
+- This production Worker disables its `workers.dev` and version URLs; use the configured hostname behind Cloudflare Access
 
 ## Troubleshooting
 

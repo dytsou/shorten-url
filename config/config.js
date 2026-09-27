@@ -1,9 +1,8 @@
 /**
- * URL Shortener Configuration Example
+ * URL Shortener deployment configuration
  *
- * Copy this file to config.js and modify the values according to your setup.
- * This file should be committed to your repository as a template.
- * The actual config.js file should be added to .gitignore to keep your secrets safe.
+ * Set frontend.url to the public static homepage that the Worker should serve.
+ * Keep private credentials out of this tracked file.
  */
 
 const config = {
@@ -11,7 +10,7 @@ const config = {
   frontend: {
     // URL where your frontend is hosted (used by worker to serve the main page)
     // REQUIRED: Change this to your Cloudflare Pages URL or custom domain
-    url: "https://your-project.pages.dev/",
+    url: "https://shorten-url-13j.pages.dev/",
 
     // Domain displayed in the custom slug input prefix
     // If null, will use the current domain automatically
@@ -107,12 +106,4 @@ const config = {
   },
 };
 
-// Export for use in other files
-if (typeof module !== "undefined" && module.exports) {
-  module.exports = config;
-}
-
-// Make available globally for browser usage
-if (typeof window !== "undefined") {
-  window.APP_CONFIG = config;
-}
+export default config;
