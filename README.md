@@ -71,7 +71,7 @@ const config = {
 
 ### 4. Use the Existing Cloudflare Worker
 
-The existing Worker named `shorten-url` handles the shortening API, short-link redirects, and the public app hostname. Cloudflare Pages hosts the static files; the Worker fetches the homepage from `frontend.url` and serves it at `/`. Keep the existing `LINKS` KV binding attached to this Worker.
+The existing Worker named `shorten-url` handles the shortening API, short-link redirects, and the public app hostname. Cloudflare Pages hosts the static files; the Worker fetches the homepage from `frontend.url` for `/` and proxies the API reference and OpenAPI file under `/api/`. Keep the existing `LINKS` KV binding attached to this Worker.
 
 ### 5. Point the Worker to Cloudflare Pages
 

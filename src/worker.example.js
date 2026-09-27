@@ -52,6 +52,23 @@ async function exampleFetchHandler(request, env) {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: shortener.htmlHeaders() });
   }
+  if (
+    (request.method === "GET" || request.method === "HEAD") &&
+    (requestURL.pathname === "/api" || requestURL.pathname.startsWith("/api/"))
+  ) {
+    if (
+      requestURL.pathname !== "/api/" &&
+      /^\/api(?:\/api)*\/?$/.test(requestURL.pathname)
+    ) {
+      return Response.redirect(new URL("/api/", requestURL), 308);
+    }
+
+    const assetURL = new URL(
+      `${requestURL.pathname.slice(1)}${requestURL.search}`,
+      config.frontend.url,
+    );
+    return fetch(new Request(assetURL, { method: request.method }));
+  }
   if (request.method === "POST") {
     return shortener.handleShorten(request, requestURL, {
       apiPath: requestURL.pathname,
