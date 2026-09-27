@@ -11,7 +11,7 @@ info:
     - Custom error pages for 404, security warnings, and redirects
 
 servers:
-  - url: https://your-worker-domain.example
+  - url: /
 
 paths:
   /:
