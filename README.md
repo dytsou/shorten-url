@@ -2,6 +2,9 @@
 
 A modern, fast URL shortener built with Cloudflare Workers and a responsive web interface. This project allows anyone to create short URLs with optional custom slugs, featuring a clean UI and robust backend with comprehensive API documentation.
 
+[![Built with Cloudflare](https://workers.cloudflare.com/built-with-cloudflare.svg)](https://cloudflare.com)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/dytsou/shorten-url) 
+
 ## Features
 
 - **URL Shortening**: Convert long URLs into short, shareable links
