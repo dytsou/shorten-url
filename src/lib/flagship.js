@@ -1,6 +1,7 @@
 import { log } from "./observability.js";
 import {
   SHORTENING_FLAG_KEY,
+  FLAGSHIP_CONTEXT_ATTRIBUTES,
   fromProviderFlag,
   normalizeCountry,
   toProviderFlag,
@@ -69,15 +70,7 @@ function runtimeDecision(details, country, durationMs) {
       durationMs,
     };
   }
-  if (reason === "DISABLED") {
-    return {
-      outcome: "unpublished",
-      country: normalizedCountry,
-      fallbackReason: "disabled",
-      durationMs,
-    };
-  }
-  if (reason === "DEFAULT") {
+  if (reason === "DEFAULT" || reason === "DISABLED") {
     const destination = details.value?.url;
     if (destination && isSafeDestination(destination) && typeof details.variant === "string") {
       return {
@@ -93,7 +86,12 @@ function runtimeDecision(details, country, durationMs) {
     return {
       outcome: "unmatched",
       country: normalizedCountry,
-      fallbackReason: normalizedCountry ? "no_match" : "missing_country",
+      fallbackReason:
+        reason === "DISABLED"
+          ? "disabled_default_missing"
+          : normalizedCountry
+            ? "no_match"
+            : "missing_country",
       durationMs,
     };
   }
@@ -139,7 +137,10 @@ export function createFlagshipAdapter(
   env,
   { fetchImpl = globalThis.fetch, now = () => Date.now(), evaluationTimeoutMs = 200 } = {}
 ) {
-  async function evaluate(country, { targetingKey, flagKey = SHORTENING_FLAG_KEY } = {}) {
+  async function evaluate(
+    country,
+    { targetingKey, context: requestContext, flagKey = SHORTENING_FLAG_KEY } = {}
+  ) {
     const started = now();
     const binding = getBinding(env);
     const normalizedCountry = normalizeCountry(country);
@@ -148,8 +149,17 @@ export function createFlagshipAdapter(
     }
     let timeoutId;
     try {
+      const providedContext = {};
+      for (const attribute of FLAGSHIP_CONTEXT_ATTRIBUTES) {
+        if (attribute === "country") continue;
+        const value = requestContext?.[attribute];
+        if (typeof value === "string" && value.trim()) {
+          providedContext[attribute] = value.trim();
+        }
+      }
       const context = {
         ...(normalizedCountry ? { country: normalizedCountry } : {}),
+        ...providedContext,
         ...(typeof targetingKey === "string" && targetingKey ? { targetingKey } : {}),
       };
       const details = await Promise.race([

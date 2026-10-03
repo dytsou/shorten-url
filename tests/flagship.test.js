@@ -86,10 +86,95 @@ describe("feature toggle definitions", () => {
         serve_variation: "sg",
       },
     ]);
-    expect(fromProviderFlag(provider)?.rules).toEqual(canaryDefinition.rules);
+    expect(fromProviderFlag(provider)?.rules).toEqual(
+      validateFlagDefinition(canaryDefinition).value.rules
+    );
   });
 
-  it("rejects invalid rollout percentages and untargeted rules", () => {
+  it("validates, evaluates, and round-trips context conditions", () => {
+    const contextualDefinition = {
+      ...definition,
+      rules: [
+        {
+          priority: 1,
+          conditions: [
+            { attribute: "country", operator: "in", value: ["US", "CA"] },
+            { attribute: "regionCode", operator: "equals", value: "CA" },
+            { attribute: "utmSource", operator: "starts_with", value: "spring" },
+          ],
+          variant: "sg",
+        },
+      ],
+    };
+    const validated = validateFlagDefinition(contextualDefinition);
+    expect(validated.ok).toBe(true);
+    expect(
+      evaluateFlagDefinition(validated.value, {
+        country: "CA",
+        regionCode: "CA",
+        utmSource: "spring-launch",
+      })
+    ).toMatchObject({ outcome: "matched", variant: "sg" });
+    expect(
+      evaluateFlagDefinition(validated.value, {
+        country: "CA",
+        regionCode: "CA",
+      }).fallbackReason
+    ).toBe("no_match");
+
+    const provider = toProviderFlag(contextualDefinition);
+    expect(provider.rules[0].conditions).toEqual(contextualDefinition.rules[0].conditions);
+    expect(fromProviderFlag(provider)?.rules).toEqual(contextualDefinition.rules);
+  });
+
+  it("treats absent context attributes as non-matches, including negative operators", () => {
+    const contextualDefinition = {
+      ...definition,
+      rules: [
+        {
+          priority: 1,
+          conditions: [{ attribute: "language", operator: "not_equals", value: "fr" }],
+          variant: "sg",
+        },
+      ],
+    };
+    const validated = validateFlagDefinition(contextualDefinition);
+
+    expect(validated.ok).toBe(true);
+    expect(evaluateFlagDefinition(validated.value, {}).fallbackReason).toBe("missing_country");
+    expect(
+      evaluateFlagDefinition(validated.value, { country: "US", language: "en" })
+    ).toMatchObject({ outcome: "matched", variant: "sg" });
+  });
+
+  it("rejects targeting attributes and operators the Worker cannot provide", () => {
+    expect(
+      validateFlagDefinition({
+        ...definition,
+        rules: [
+          {
+            priority: 1,
+            conditions: [{ attribute: "postalCode", operator: "equals", value: "78701" }],
+            variant: "sg",
+          },
+        ],
+      }).ok
+    ).toBe(false);
+    expect(
+      validateFlagDefinition({
+        ...definition,
+        rules: [
+          {
+            priority: 1,
+            conditions: [{ attribute: "country", operator: "matches_regex", value: ".*" }],
+            variant: "sg",
+          },
+        ],
+      }).ok
+    ).toBe(false);
+  });
+
+  it("rejects invalid rollout percentages and allows an all-visitors segment", () => {
     expect(
       validateFlagDefinition({
         ...definition,
@@ -101,7 +186,7 @@ describe("feature toggle definitions", () => {
         ...definition,
         rules: [{ priority: 1, countries: [], variant: "sg" }],
       }).ok
-    ).toBe(false);
+    ).toBe(true);
   });
 });
 
@@ -153,6 +238,33 @@ describe("Flagship adapter", () => {
     );
   });
 
+  it("passes only supported evaluation context fields to Flagship", async () => {
+    const binding = {
+      getObjectDetails: vi.fn().mockResolvedValue({
+        value: { url: "https://short.example/region" },
+        variant: "sg",
+        reason: "TARGETING_MATCH",
+      }),
+    };
+    const adapter = createFlagshipAdapter({ FLAGS: binding }, { now: () => 100 });
+
+    await adapter.evaluate("us", {
+      targetingKey: "visitor-key-1234567890",
+      context: { regionCode: "TX", utmSource: "newsletter", postalCode: "78701" },
+    });
+
+    expect(binding.getObjectDetails).toHaveBeenCalledWith(
+      "shorten-routing",
+      { url: null },
+      {
+        country: "US",
+        targetingKey: "visitor-key-1234567890",
+        regionCode: "TX",
+        utmSource: "newsletter",
+      }
+    );
+  });
+
   it.each([
     ["missing binding", null, "failed", "malformed_provider_response"],
     [
@@ -181,6 +293,24 @@ describe("Flagship adapter", () => {
     ).toMatchObject({
       outcome: "matched",
       country: null,
+      variant: "control",
+      destination: "https://short.example/control",
+    });
+  });
+
+  it("serves the default variant when the Flagship flag is disabled", () => {
+    expect(
+      runtimeDecision(
+        {
+          value: { url: "https://short.example/control" },
+          variant: "control",
+          reason: "DISABLED",
+        },
+        undefined,
+        5
+      )
+    ).toMatchObject({
+      outcome: "matched",
       variant: "control",
       destination: "https://short.example/control",
     });

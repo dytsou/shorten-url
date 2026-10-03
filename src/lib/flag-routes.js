@@ -1,9 +1,18 @@
 import { hasPassedAccess } from "./access.js";
 import { createFlagManagement } from "./flag-management.js";
+import { FLAGSHIP_CONTEXT_ATTRIBUTES } from "./feature-toggle.js";
 import { flagEvaluationFields, log } from "./observability.js";
 
 const TARGETING_KEY_COOKIE = "shorten-url-targeting-key";
 const TARGETING_KEY_PATTERN = /^[A-Za-z0-9_-]{16,128}$/;
+const REQUEST_CONTEXT_ATTRIBUTES = FLAGSHIP_CONTEXT_ATTRIBUTES.filter(
+  (attribute) => !["country", "utmSource", "utmMedium", "utmCampaign"].includes(attribute)
+);
+const CAMPAIGN_PARAMETERS = [
+  ["utm_source", "utmSource"],
+  ["utm_medium", "utmMedium"],
+  ["utm_campaign", "utmCampaign"],
+];
 
 function normalizePrefix(prefix) {
   return `/${String(prefix || "").replace(/^\/|\/$/g, "")}`;
@@ -42,6 +51,34 @@ function targetingKeyFromRequest(request) {
     return TARGETING_KEY_PATTERN.test(value) ? value : null;
   }
   return null;
+}
+
+function boundedContextValue(value, maxLength = 128) {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized && normalized.length <= maxLength ? normalized : null;
+}
+
+function contextFromRequest(request) {
+  const context = {};
+  const geo = request.cf;
+  for (const attribute of REQUEST_CONTEXT_ATTRIBUTES) {
+    const value = boundedContextValue(geo?.[attribute], attribute === "timezone" ? 64 : 128);
+    if (value) context[attribute] = value;
+  }
+
+  const language = boundedContextValue(
+    request.headers.get("Accept-Language")?.split(",", 1)[0]?.split(";", 1)[0]?.toLowerCase(),
+    35
+  );
+  if (language) context.language = language;
+
+  const url = new URL(request.url);
+  for (const [parameter, attribute] of CAMPAIGN_PARAMETERS) {
+    const value = boundedContextValue(url.searchParams.get(parameter));
+    if (value) context[attribute] = value;
+  }
+  return context;
 }
 
 function setTargetingKeyCookie(response, targetingKey) {
@@ -98,7 +135,11 @@ export function createFlagRoutes({
     const country = request.cf?.country;
     const existingTargetingKey = targetingKeyFromRequest(request);
     const targetingKey = existingTargetingKey || createTargetingKey();
-    const decision = await adapter.evaluate(country, { targetingKey });
+    const context = contextFromRequest(request);
+    const decision = await adapter.evaluate(country, {
+      targetingKey,
+      ...(Object.keys(context).length ? { context } : {}),
+    });
     log("info", "flagship.evaluation", flagEvaluationFields(decision));
     const response =
       decision.outcome === "matched"

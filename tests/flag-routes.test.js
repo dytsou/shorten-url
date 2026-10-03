@@ -13,7 +13,7 @@ function shortener() {
   };
 }
 
-function accessRequest(url, extraHeaders = {}) {
+function accessRequest(url, extraHeaders = {}, cf = { country: "SG" }) {
   const request = new Request(`https://short.example${url}`, {
     headers: {
       "Cf-Access-Jwt-Assertion": "token",
@@ -21,7 +21,7 @@ function accessRequest(url, extraHeaders = {}) {
       ...extraHeaders,
     },
   });
-  Object.defineProperty(request, "cf", { value: { country: "SG" } });
+  Object.defineProperty(request, "cf", { value: cf });
   return request;
 }
 
@@ -79,6 +79,48 @@ describe("Flagship route adapters", () => {
     );
     expect(repeated.headers.get("set-cookie")).toBeNull();
     expect(adapter.evaluate).toHaveBeenLastCalledWith("SG", { targetingKey });
+  });
+
+  it("passes bounded geo, language, and campaign context to evaluation", async () => {
+    const adapter = { evaluate: vi.fn().mockResolvedValue({ outcome: "unmatched" }) };
+    const routes = createFlagRoutes({
+      prefix: "/settings",
+      shorteningPath: "/",
+      pageUrl: "https://frontend.example",
+      shortener: shortener(),
+      env,
+      adapter,
+      createTargetingKey: () => "visitor-key-1234567890",
+    });
+
+    await routes.evaluateShortening(
+      accessRequest(
+        "/?utm_source=spring-launch&utm_medium=email&utm_campaign=may",
+        { "Accept-Language": "en-US,en;q=0.9" },
+        {
+          country: "US",
+          regionCode: "TX",
+          continent: "NA",
+          timezone: "America/Chicago",
+          postalCode: "78701",
+        }
+      ),
+      "/",
+      () => new Response("landing page")
+    );
+
+    expect(adapter.evaluate).toHaveBeenCalledWith("US", {
+      targetingKey: "visitor-key-1234567890",
+      context: {
+        regionCode: "TX",
+        continent: "NA",
+        timezone: "America/Chicago",
+        language: "en-us",
+        utmSource: "spring-launch",
+        utmMedium: "email",
+        utmCampaign: "may",
+      },
+    });
   });
 
   it("removes standalone settings pages without evaluating them", async () => {
