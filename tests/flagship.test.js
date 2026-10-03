@@ -61,6 +61,48 @@ describe("feature toggle definitions", () => {
       expect.objectContaining({ key: "shorten-routing", enabled: true })
     );
   });
+
+  it("converts country and global percentage rollouts to Flagship rules", () => {
+    const canaryDefinition = {
+      ...definition,
+      rules: [
+        { priority: 1, countries: ["SG"], variant: "sg", rolloutPercentage: 12.5 },
+        { priority: 2, countries: [], variant: "sg", rolloutPercentage: 5 },
+      ],
+    };
+    const provider = toProviderFlag(canaryDefinition);
+
+    expect(provider.rules).toEqual([
+      {
+        priority: 1,
+        conditions: [{ attribute: "country", operator: "in", value: ["SG"] }],
+        rollout: { percentage: 12.5, attribute: "targetingKey" },
+        serve_variation: "sg",
+      },
+      {
+        priority: 2,
+        conditions: [],
+        rollout: { percentage: 5, attribute: "targetingKey" },
+        serve_variation: "sg",
+      },
+    ]);
+    expect(fromProviderFlag(provider)?.rules).toEqual(canaryDefinition.rules);
+  });
+
+  it("rejects invalid rollout percentages and untargeted rules", () => {
+    expect(
+      validateFlagDefinition({
+        ...definition,
+        rules: [{ priority: 1, countries: [], variant: "sg", rolloutPercentage: 100.001 }],
+      }).ok
+    ).toBe(false);
+    expect(
+      validateFlagDefinition({
+        ...definition,
+        rules: [{ priority: 1, countries: [], variant: "sg" }],
+      }).ok
+    ).toBe(false);
+  });
 });
 
 describe("Flagship adapter", () => {
@@ -87,6 +129,30 @@ describe("Flagship adapter", () => {
     );
   });
 
+  it("passes a sticky targeting key and allows global canaries without country data", async () => {
+    const binding = {
+      getObjectDetails: vi.fn().mockResolvedValue({
+        value: { url: "https://short.example/canary" },
+        variant: "canary",
+        reason: "SPLIT",
+      }),
+    };
+    const adapter = createFlagshipAdapter({ FLAGS: binding }, { now: () => 100 });
+    const result = await adapter.evaluate(undefined, { targetingKey: "visitor-key-1234567890" });
+
+    expect(result).toMatchObject({
+      outcome: "matched",
+      country: null,
+      variant: "canary",
+      destination: "https://short.example/canary",
+    });
+    expect(binding.getObjectDetails).toHaveBeenCalledWith(
+      "shorten-routing",
+      { url: null },
+      { targetingKey: "visitor-key-1234567890" }
+    );
+  });
+
   it.each([
     ["missing binding", null, "failed", "malformed_provider_response"],
     [
@@ -99,6 +165,25 @@ describe("Flagship adapter", () => {
     ["malformed details", { value: { url: null } }, "failed", "malformed_provider_response"],
   ])("%s safely falls back", (_name, details, outcome, fallbackReason) => {
     expect(runtimeDecision(details, "US", 5)).toMatchObject({ outcome, fallbackReason });
+  });
+
+  it("routes the default variation as the canary control population", () => {
+    expect(
+      runtimeDecision(
+        {
+          value: { url: "https://short.example/control" },
+          variant: "control",
+          reason: "DEFAULT",
+        },
+        undefined,
+        5
+      )
+    ).toMatchObject({
+      outcome: "matched",
+      country: null,
+      variant: "control",
+      destination: "https://short.example/control",
+    });
   });
 
   it("bounds a provider that does not resolve", async () => {

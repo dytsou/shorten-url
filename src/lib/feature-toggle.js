@@ -13,7 +13,14 @@ const DEFINITION_FIELDS = new Set([
   "rules",
 ]);
 const VARIANT_FIELDS = new Set(["key", "value", "url"]);
-const RULE_FIELDS = new Set(["priority", "countries", "country", "variant", "serve_variation"]);
+const RULE_FIELDS = new Set([
+  "priority",
+  "countries",
+  "country",
+  "variant",
+  "serve_variation",
+  "rolloutPercentage",
+]);
 
 export function normalizeCountry(country) {
   if (typeof country !== "string") return null;
@@ -98,11 +105,25 @@ function validateRule(rule, variantKeys, priorities, errors) {
     errors.push("rule variant must exist");
   }
   const countries = ruleCountries(rule);
-  if (countries.length === 0 || countries.some((country) => !normalizeCountry(country))) {
-    errors.push("rules must target one or more valid country codes");
+  if (countries.some((country) => !normalizeCountry(country))) {
+    errors.push("rule countries must be valid two-letter country codes");
   }
   if (new Set(countries.map(normalizeCountry)).size !== countries.length) {
     errors.push("rule countries must be unique");
+  }
+  const hasRollout = rule?.rolloutPercentage !== undefined && rule?.rolloutPercentage !== null;
+  if (
+    hasRollout &&
+    (typeof rule.rolloutPercentage !== "number" ||
+      !Number.isFinite(rule.rolloutPercentage) ||
+      rule.rolloutPercentage < 0 ||
+      rule.rolloutPercentage > 100 ||
+      Math.abs(rule.rolloutPercentage * 100 - Math.round(rule.rolloutPercentage * 100)) > 1e-8)
+  ) {
+    errors.push("rollout percentages must be between 0 and 100 with at most two decimals");
+  }
+  if (countries.length === 0 && !hasRollout) {
+    errors.push("rules must target a country or set a rollout percentage");
   }
 }
 
@@ -124,11 +145,15 @@ function normalizedVariant(variant) {
 }
 
 function normalizedRule(rule) {
-  return {
+  const normalized = {
     priority: rule.priority,
     variant: rule.variant || rule.serve_variation,
     countries: ruleCountries(rule).map(normalizeCountry),
   };
+  if (rule.rolloutPercentage !== undefined && rule.rolloutPercentage !== null) {
+    normalized.rolloutPercentage = rule.rolloutPercentage;
+  }
+  return normalized;
 }
 
 function providerRuleCountries(condition) {
@@ -179,17 +204,31 @@ export function validateFlagDefinition(input, { expectedKey = SHORTENING_FLAG_KE
   };
 }
 
-export function evaluateFlagDefinition(definition, country) {
+function percentageBucket(targetingKey) {
+  let hash = 2166136261;
+  for (const byte of new TextEncoder().encode(targetingKey)) {
+    hash = Math.imul(hash ^ byte, 16777619);
+  }
+  return ((hash >>> 0) / 0x100000000) * 100;
+}
+
+export function evaluateFlagDefinition(definition, country, targetingKey) {
   const normalizedCountry = normalizeCountry(country);
   if (!definition?.enabled) {
     return { outcome: "unpublished", country: normalizedCountry, fallbackReason: "disabled" };
   }
-  if (!normalizedCountry) {
-    return { outcome: "unmatched", country: null, fallbackReason: "missing_country" };
-  }
   for (const rule of definition.rules || []) {
     const countries = (rule.countries || []).map(normalizeCountry);
-    if (!countries.includes(normalizedCountry)) continue;
+    if (countries.length > 0 && !countries.includes(normalizedCountry)) continue;
+    if (rule.rolloutPercentage !== undefined) {
+      if (
+        typeof targetingKey !== "string" ||
+        !targetingKey ||
+        percentageBucket(targetingKey) >= rule.rolloutPercentage
+      ) {
+        continue;
+      }
+    }
     const variant = definition.variants.find((item) => item.key === rule.variant);
     if (variant) {
       return {
@@ -200,7 +239,11 @@ export function evaluateFlagDefinition(definition, country) {
       };
     }
   }
-  return { outcome: "unmatched", country: normalizedCountry, fallbackReason: "no_match" };
+  return {
+    outcome: "unmatched",
+    country: normalizedCountry,
+    fallbackReason: normalizedCountry ? "no_match" : "missing_country",
+  };
 }
 
 export function toProviderFlag(definition) {
@@ -214,13 +257,23 @@ export function toProviderFlag(definition) {
     variations: Object.fromEntries(value.variants.map((variant) => [variant.key, variant.value])),
     rules: value.rules.map((rule) => ({
       priority: rule.priority,
-      conditions: [
-        {
-          attribute: "country",
-          operator: "in",
-          value: rule.countries,
-        },
-      ],
+      conditions: rule.countries.length
+        ? [
+            {
+              attribute: "country",
+              operator: "in",
+              value: rule.countries,
+            },
+          ]
+        : [],
+      ...(rule.rolloutPercentage === undefined
+        ? {}
+        : {
+            rollout: {
+              percentage: rule.rolloutPercentage,
+              attribute: "targetingKey",
+            },
+          }),
       serve_variation: rule.variant,
     })),
     description: value.description || null,
@@ -232,13 +285,26 @@ export function fromProviderFlag(flag) {
   if (!flag || typeof flag !== "object") return null;
   if (
     (flag.type && flag.type !== "json") ||
-    (flag.rules || []).some(
-      (rule) =>
-        rule?.rollout ||
-        !Array.isArray(rule.conditions) ||
-        rule.conditions.length !== 1 ||
-        !["in", "equals"].includes(rule.conditions[0]?.operator)
-    )
+    (flag.rules || []).some((rule) => {
+      const conditions = rule?.conditions ?? [];
+      const rollout = rule?.rollout;
+      const hasUnsupportedRollout =
+        rollout !== undefined &&
+        rollout !== null &&
+        (typeof rollout !== "object" ||
+          Array.isArray(rollout) ||
+          Object.keys(rollout).some((field) => !["percentage", "attribute"].includes(field)) ||
+          typeof rollout.percentage !== "number" ||
+          (rollout.attribute !== undefined && rollout.attribute !== "targetingKey"));
+      return (
+        !Array.isArray(conditions) ||
+        conditions.length > 1 ||
+        (conditions.length === 1 &&
+          (conditions[0]?.attribute !== "country" ||
+            !["in", "equals"].includes(conditions[0]?.operator))) ||
+        hasUnsupportedRollout
+      );
+    })
   ) {
     return null;
   }
@@ -247,12 +313,16 @@ export function fromProviderFlag(flag) {
     value,
   }));
   const rules = (flag.rules || []).map((rule) => {
-    const condition = rule.conditions?.[0];
-    return {
+    const condition = (rule.conditions || [])[0];
+    const normalized = {
       priority: rule.priority,
       variant: rule.serve_variation,
       countries: providerRuleCountries(condition),
     };
+    if (rule.rollout !== undefined && rule.rollout !== null) {
+      normalized.rolloutPercentage = rule.rollout.percentage;
+    }
+    return normalized;
   });
   const candidate = {
     key: flag.key,

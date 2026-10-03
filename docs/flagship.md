@@ -11,8 +11,16 @@ existing shortening page and redirect behavior.
 1. Create a Flagship app and replace the placeholder in the `[[flagship]]`
    block in `wrangler.toml` (see `wrangler.toml.example`).
 2. Create the JSON flag `shorten-routing`. Variations must be objects with a
-   single `url` field. Country rules target the `country` attribute and use
-   `in` with two-letter country codes. Keep a control variation as the default.
+   single `url` field. Rules can target the `country` attribute with `in` and
+   two-letter country codes, apply a percentage rollout, or combine both.
+   Percentage rules use Flagship's `targetingKey` bucketing attribute. The
+   Worker assigns an opaque first-party cookie so a browser keeps its canary
+   assignment between visits. Set the control variation as the default; users
+   outside a rollout receive its destination.
+   A single 5% rule gives a 5% canary and sends the rest to the default. When
+   splitting one audience across multiple variants, use cumulative thresholds:
+   30%, 70%, and 100% produce a 30/40/30 split. Repeat the same audience
+   conditions and bucketing attribute on those rules.
 3. Configure the protected settings API secrets/variables:
    `CLOUDFLARE_ACCOUNT_ID`, `FLAGSHIP_APP_ID`, `FLAGSHIP_API_TOKEN`,
    `FLAGSHIP_CSRF_SECRET`, `CF_ACCESS_ISSUER`, and `CF_ACCESS_AUDIENCE`.
@@ -31,9 +39,10 @@ the local config example; do not put any Access, Flagship, or CSRF secret in
 the HTML or frontend config.
 
 The settings API uses the documented Cloudflare Flagship management API for
-listing, creating, updating, and enabling the published flag. The API's
-full-replacement update is the atomic publication boundary; there is no
-second Worker-owned draft store. API tokens stay server-side. Writes require
+country targeting, percentage rollouts, listing, creating, updating, and
+enabling the published flag. The API's full-replacement update is the atomic
+publication boundary; there is no second Worker-owned draft store. API tokens
+stay server-side. Writes require
 a verified Access JWT, JSON requests from the Worker or configured frontend
 origin, and an HMAC CSRF token returned by the settings API. A stale
 `updated_at` value is rejected with

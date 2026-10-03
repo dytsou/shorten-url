@@ -11,6 +11,7 @@ import {
   workerUrl,
   WORKSPACE_TABS,
 } from "./api.js";
+import { loadLocalFlagMock, publishLocalFlagMock, saveLocalFlagMock } from "./local-flag-mock.js";
 import "./styles/app.css";
 
 const FLAG_KEY = "shorten-routing";
@@ -24,7 +25,7 @@ function createEditorItemId(prefix) {
 function emptyDefinition() {
   return {
     key: FLAG_KEY,
-    description: "Country-aware destinations for newly created short links.",
+    description: "Country-aware destinations and gradual rollouts for the landing page.",
     enabled: true,
     defaultVariant: "control",
     variants: [{ id: createEditorItemId("variant"), key: "control", url: "" }],
@@ -67,6 +68,7 @@ function normalizeDefinition(flag) {
           countries: Array.isArray(rule?.countries)
             ? rule.countries.filter((country) => typeof country === "string")
             : [],
+          rolloutPercentage: Number.isFinite(rule?.rolloutPercentage) ? rule.rolloutPercentage : "",
         }))
       : [],
   };
@@ -86,6 +88,11 @@ function toFlagPayload(definition) {
       priority: Number(rule.priority),
       variant: rule.variant,
       countries: rule.countries.map((country) => country.trim().toUpperCase()).filter(Boolean),
+      ...(rule.rolloutPercentage === "" ||
+      rule.rolloutPercentage === undefined ||
+      rule.rolloutPercentage === null
+        ? {}
+        : { rolloutPercentage: Number(rule.rolloutPercentage) }),
     })),
   };
 }
@@ -106,12 +113,35 @@ function draftProblem(definition) {
     return "Rule priorities must be positive whole numbers.";
   }
   if (priorities.length !== new Set(priorities).size) return "Rule priorities must be unique.";
-  if (
-    definition.rules.some(
-      (rule) => !keys.includes(rule.variant) || !rule.countries.some((country) => country.trim())
-    )
-  ) {
-    return "Each rule needs a variant and at least one country code.";
+  if (definition.rules.some((rule) => !keys.includes(rule.variant))) {
+    return "Each rule needs an existing variant.";
+  }
+  for (const rule of definition.rules) {
+    const countries = rule.countries.map((country) => country.trim().toUpperCase()).filter(Boolean);
+    const hasRollout =
+      rule.rolloutPercentage !== "" &&
+      rule.rolloutPercentage !== undefined &&
+      rule.rolloutPercentage !== null;
+    if (countries.length === 0 && !hasRollout) {
+      return "Each rule needs a country or a rollout percentage.";
+    }
+    if (countries.some((country) => !/^[A-Z]{2}$/.test(country))) {
+      return "Countries must use two-letter country codes.";
+    }
+    if (new Set(countries).size !== countries.length) {
+      return "Countries in a rule must be unique.";
+    }
+    if (hasRollout) {
+      const percentage = Number(rule.rolloutPercentage);
+      if (
+        !Number.isFinite(percentage) ||
+        percentage < 0 ||
+        percentage > 100 ||
+        Math.abs(percentage * 100 - Math.round(percentage * 100)) > 1e-8
+      ) {
+        return "Rollout percentages must be between 0 and 100, with at most two decimals.";
+      }
+    }
   }
   return "";
 }
@@ -404,6 +434,7 @@ function DefinitionEditor({ definition, setDefinition, disabled }) {
           priority: Math.max(0, ...current.rules.map((rule) => Number(rule.priority) || 0)) + 1,
           variant: current.variants[0]?.key || "",
           countries: ["US"],
+          rolloutPercentage: "",
         },
       ],
     }));
@@ -419,164 +450,229 @@ function DefinitionEditor({ definition, setDefinition, disabled }) {
   }
 
   return (
-    <fieldset className="editor-fields" disabled={disabled}>
-      <div className="field-group">
-        <label htmlFor="flag-description">Description</label>
-        <textarea
-          id="flag-description"
-          value={definition.description}
-          onChange={(event) => updateDefinition({ description: event.target.value })}
-          rows={2}
-          maxLength={512}
-        />
-      </div>
+    <fieldset className="flag-editor" aria-label="Flag configuration" disabled={disabled}>
+      <nav className="flag-section-nav" aria-label="Flag configuration sections">
+        <a href="#flag-details">Details</a>
+        <a href="#flag-variants">
+          Variations <span>{definition.variants.length}</span>
+        </a>
+        <a href="#flag-rules">
+          Targeting rules <span>{definition.rules.length}</span>
+        </a>
+      </nav>
 
-      <label className="toggle-row" htmlFor="flag-enabled" aria-label="Routing flag enabled">
-        <span>
-          <strong>Routing flag enabled</strong>
-          <small>Use country rules when creating a new short link.</small>
-        </span>
-        <input
-          id="flag-enabled"
-          type="checkbox"
-          checked={definition.enabled}
-          onChange={(event) => updateDefinition({ enabled: event.target.checked })}
-        />
-        <span className="toggle-control" aria-hidden="true" />
-      </label>
-
-      <div className="editor-section-heading">
-        <div>
-          <p className="eyebrow">DESTINATIONS</p>
-          <p className="helper-text">Every variant must resolve to an HTTP(S) URL.</p>
+      <section id="flag-details" className="flag-section panel">
+        <div className="flag-section-heading">
+          <div>
+            <p className="eyebrow">01 / CONFIGURATION</p>
+            <h2>Flag details</h2>
+          </div>
+          <span className="flag-section-note">Shared settings for this flag</span>
         </div>
-        <button className="button button--small" type="button" onClick={addVariant}>
-          + Variant
-        </button>
-      </div>
-      <div className="repeat-list">
-        {definition.variants.map((variant, index) => (
-          <div className="repeat-row" key={variant.id}>
-            <div className="field-group field-group--compact">
-              <label htmlFor={`variant-key-${variant.id}`}>Key</label>
-              <input
-                id={`variant-key-${variant.id}`}
-                value={variant.key}
-                onChange={(event) => updateVariantKey(index, event.target.value)}
-                placeholder="control"
-              />
-            </div>
-            <div className="field-group field-group--wide">
-              <label htmlFor={`variant-url-${variant.id}`}>Destination URL</label>
-              <input
-                id={`variant-url-${variant.id}`}
-                type="url"
-                value={variant.url}
-                onChange={(event) => updateVariant(index, "url", event.target.value)}
-                placeholder="https://example.com/us"
-              />
-            </div>
-            <button
-              className="icon-button"
-              type="button"
-              onClick={() => removeVariant(index)}
-              disabled={definition.variants.length <= 1}
-              aria-label={`Remove ${variant.key || "variant"}`}
-            >
-              ×
+        <div className="flag-details-grid">
+          <div className="flag-key-field">
+            <span>Key</span>
+            <code>{FLAG_KEY}</code>
+          </div>
+          <div className="field-group flag-description-field">
+            <label htmlFor="flag-description">Description</label>
+            <textarea
+              id="flag-description"
+              value={definition.description}
+              onChange={(event) => updateDefinition({ description: event.target.value })}
+              rows={2}
+              maxLength={512}
+            />
+          </div>
+          <label className="toggle-row" htmlFor="flag-enabled">
+            <span>
+              <strong>Flag enabled</strong>
+              <small>When disabled, visitors receive the default variation.</small>
+            </span>
+            <input
+              id="flag-enabled"
+              type="checkbox"
+              checked={definition.enabled}
+              onChange={(event) => updateDefinition({ enabled: event.target.checked })}
+            />
+            <span className="toggle-control" aria-hidden="true" />
+          </label>
+        </div>
+      </section>
+
+      <section id="flag-variants" className="flag-section panel">
+        <div className="flag-section-heading">
+          <div>
+            <p className="eyebrow">02 / VARIATIONS</p>
+            <h2>Variations</h2>
+            <p className="helper-text">Each variation returns one safe HTTP(S) destination.</p>
+          </div>
+          <div className="flag-section-tools">
+            <span className="count-chip">{definition.variants.length} total</span>
+            <button className="button button--small" type="button" onClick={addVariant}>
+              + Add variation
             </button>
           </div>
-        ))}
-      </div>
-
-      <div className="field-group">
-        <label htmlFor="default-variant">Default destination</label>
-        <select
-          id="default-variant"
-          value={definition.defaultVariant}
-          onChange={(event) => updateDefinition({ defaultVariant: event.target.value })}
-        >
-          {definition.variants.map((variant) => (
-            <option key={variant.id} value={variant.key}>
-              {variant.key || "Unnamed variant"}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="editor-section-heading editor-section-heading--rules">
-        <div>
-          <p className="eyebrow">COUNTRY RULES</p>
-          <p className="helper-text">Rules run in ascending priority; first match wins.</p>
         </div>
-        <button className="button button--small" type="button" onClick={addRule}>
-          + Rule
-        </button>
-      </div>
-      {definition.rules.length === 0 ? (
-        <div className="empty-state">
-          No targeting rules yet. The default destination will be used.
-        </div>
-      ) : (
-        <div className="repeat-list repeat-list--rules">
-          {definition.rules.map((rule, index) => (
-            <div className="repeat-row repeat-row--rule" key={rule.id}>
-              <div className="field-group field-group--priority">
-                <label htmlFor={`rule-priority-${rule.id}`}>Priority</label>
+        <div className="variation-list">
+          {definition.variants.map((variant, index) => (
+            <div className="variation-row" key={variant.id}>
+              <div className="field-group variation-key-field">
+                <label htmlFor={`variant-key-${variant.id}`}>Key</label>
                 <input
-                  id={`rule-priority-${rule.id}`}
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={rule.priority}
-                  onChange={(event) => updateRule(index, "priority", event.target.value)}
+                  id={`variant-key-${variant.id}`}
+                  value={variant.key}
+                  onChange={(event) => updateVariantKey(index, event.target.value)}
+                  placeholder="control"
                 />
               </div>
-              <div className="field-group field-group--compact">
-                <label htmlFor={`rule-variant-${rule.id}`}>Serve</label>
-                <select
-                  id={`rule-variant-${rule.id}`}
-                  value={rule.variant}
-                  onChange={(event) => updateRule(index, "variant", event.target.value)}
-                >
-                  {definition.variants.map((variant) => (
-                    <option key={`${rule.id}-${variant.id}`} value={variant.key}>
-                      {variant.key || "Unnamed"}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="field-group field-group--wide">
-                <label htmlFor={`rule-countries-${rule.id}`}>Countries</label>
+              <div className="field-group variation-url-field">
+                <label htmlFor={`variant-url-${variant.id}`}>Destination URL</label>
                 <input
-                  id={`rule-countries-${rule.id}`}
-                  value={rule.countries.join(", ")}
-                  onChange={(event) =>
-                    updateRule(
-                      index,
-                      "countries",
-                      event.target.value.split(",").map((country) => country.trim())
-                    )
-                  }
-                  placeholder="US, CA"
+                  id={`variant-url-${variant.id}`}
+                  type="url"
+                  value={variant.url}
+                  onChange={(event) => updateVariant(index, "url", event.target.value)}
+                  placeholder="https://example.com/control"
                 />
               </div>
+              <label className="default-variation" htmlFor={`variant-default-${variant.id}`}>
+                <input
+                  id={`variant-default-${variant.id}`}
+                  name="default-variation"
+                  type="radio"
+                  checked={definition.defaultVariant === variant.key}
+                  onChange={() => updateDefinition({ defaultVariant: variant.key })}
+                />
+                <span>Default</span>
+              </label>
               <button
                 className="icon-button"
                 type="button"
-                onClick={() =>
-                  updateDefinition({
-                    rules: definition.rules.filter((_, ruleIndex) => ruleIndex !== index),
-                  })
-                }
-                aria-label={`Remove rule ${index + 1}`}
+                onClick={() => removeVariant(index)}
+                disabled={definition.variants.length <= 1}
+                aria-label={`Remove ${variant.key || "variation"}`}
               >
                 ×
               </button>
             </div>
           ))}
         </div>
-      )}
+      </section>
+
+      <section id="flag-rules" className="flag-section panel">
+        <div className="flag-section-heading flag-section-heading--rules">
+          <div>
+            <p className="eyebrow">03 / TARGETING</p>
+            <h2>Targeting rules</h2>
+            <p className="helper-text">
+              Rules run by priority. Blank countries match every country; browsers keep a stable
+              bucket. Use cumulative rollout thresholds for a multi-variation split.
+            </p>
+          </div>
+          <div className="flag-section-tools">
+            <span className="count-chip">{definition.rules.length} total</span>
+            <button className="button button--small" type="button" onClick={addRule}>
+              + Add rule
+            </button>
+          </div>
+        </div>
+        {definition.rules.length === 0 ? (
+          <div className="empty-state">
+            <strong>No targeting rules</strong>
+            <span>All visitors receive the default variation until you add a rule.</span>
+          </div>
+        ) : (
+          <div className="rule-list">
+            <div className="rule-list-heading" aria-hidden="true">
+              <span>Priority</span>
+              <span>Country audience</span>
+              <span>Rollout</span>
+              <span>Serve variation</span>
+              <span />
+            </div>
+            {definition.rules.map((rule, index) => (
+              <div className="rule-row" key={rule.id}>
+                <div className="field-group rule-priority-field">
+                  <label htmlFor={`rule-priority-${rule.id}`}>Priority</label>
+                  <input
+                    id={`rule-priority-${rule.id}`}
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={rule.priority}
+                    onChange={(event) => updateRule(index, "priority", event.target.value)}
+                  />
+                </div>
+                <div className="field-group rule-country-field">
+                  <label htmlFor={`rule-countries-${rule.id}`}>Countries (optional)</label>
+                  <input
+                    id={`rule-countries-${rule.id}`}
+                    value={rule.countries.join(", ")}
+                    onChange={(event) =>
+                      updateRule(
+                        index,
+                        "countries",
+                        event.target.value.split(",").map((country) => country.trim())
+                      )
+                    }
+                    placeholder="All countries or US, CA"
+                  />
+                </div>
+                <div className="field-group rule-rollout-field">
+                  <label htmlFor={`rule-rollout-${rule.id}`}>Rollout (%)</label>
+                  <input
+                    id={`rule-rollout-${rule.id}`}
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={rule.rolloutPercentage}
+                    onChange={(event) => updateRule(index, "rolloutPercentage", event.target.value)}
+                    placeholder="100"
+                  />
+                </div>
+                <div className="field-group rule-variation-field">
+                  <label htmlFor={`rule-variant-${rule.id}`}>Serve</label>
+                  <select
+                    id={`rule-variant-${rule.id}`}
+                    value={rule.variant}
+                    onChange={(event) => updateRule(index, "variant", event.target.value)}
+                  >
+                    {definition.variants.map((variant) => (
+                      <option key={`${rule.id}-${variant.id}`} value={variant.key}>
+                        {variant.key || "Unnamed"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  className="icon-button"
+                  type="button"
+                  onClick={() =>
+                    updateDefinition({
+                      rules: definition.rules.filter((_, ruleIndex) => ruleIndex !== index),
+                    })
+                  }
+                  aria-label={`Remove rule ${index + 1}`}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="rule-fallback">
+          <span className="rule-fallback__marker" aria-hidden="true">
+            ↳
+          </span>
+          <div>
+            <span>Default variation</span>
+            <strong>{definition.defaultVariant || "Choose a variation"}</strong>
+          </div>
+          <p>Used when a visitor falls through every targeting rule.</p>
+        </div>
+      </section>
     </fieldset>
   );
 }
@@ -596,12 +692,21 @@ function SettingsPage({ config }) {
     setPhase("loading");
     setStatus({ tone: "neutral", message: "Loading settings…" });
     if (config.isLocalDevelopment) {
-      setPhase("error");
-      setStatus({
-        tone: "error",
-        message:
-          "Flagship settings require the protected Worker host. Set VITE_WORKER_ORIGIN to use them from localhost.",
-      });
+      try {
+        const flag = loadLocalFlagMock();
+        setCsrfToken("");
+        setHasFlag(Boolean(flag));
+        setVersion(flag?.updatedAt || "");
+        setDefinition(normalizeDefinition(flag));
+        setPhase("ready");
+        setStatus({
+          tone: "neutral",
+          message: "Local mock mode. Changes stay in this browser and never reach Flagship.",
+        });
+      } catch (error) {
+        setPhase("error");
+        setStatus({ tone: "error", message: error.message || "Could not load the local mock." });
+      }
       return undefined;
     }
     loadSettings(config)
@@ -648,16 +753,23 @@ function SettingsPage({ config }) {
     setStatus({ tone: "neutral", message: "Saving the draft…" });
     try {
       const payload = toFlagPayload(definition);
-      const result = hasFlag
-        ? await updateShorteningFlag(payload, version, config, csrfToken)
-        : await createShorteningFlag(payload, config, csrfToken);
+      let result;
+      if (config.isLocalDevelopment) {
+        result = saveLocalFlagMock(payload);
+      } else if (hasFlag) {
+        result = await updateShorteningFlag(payload, version, config, csrfToken);
+      } else {
+        result = await createShorteningFlag(payload, config, csrfToken);
+      }
       if (!result?.flag) throw new Error("The Worker returned no saved flag");
       setDefinition(normalizeDefinition(result.flag));
       setVersion(result.flag.updatedAt || version);
       setHasFlag(true);
       setStatus({
         tone: "success",
-        message: "Draft saved. Publish when the destinations are ready.",
+        message: config.isLocalDevelopment
+          ? "Local mock saved in this browser. No real Flagship data changed."
+          : "Draft saved. Publish when the destinations are ready.",
       });
     } catch (error) {
       setStatus({
@@ -678,13 +790,17 @@ function SettingsPage({ config }) {
     setBusy("publish");
     setStatus({ tone: "neutral", message: "Publishing the current draft…" });
     try {
-      const result = await publishShorteningFlag(version, config, csrfToken);
+      const result = config.isLocalDevelopment
+        ? publishLocalFlagMock(version)
+        : await publishShorteningFlag(version, config, csrfToken);
       if (!result?.flag) throw new Error("The Worker returned no published flag");
       setDefinition(normalizeDefinition(result.flag));
       setVersion(result.flag.updatedAt || version);
       setStatus({
         tone: "success",
-        message: "Published. New links can now use the updated routing rules.",
+        message: config.isLocalDevelopment
+          ? "Local mock published in this browser. Real links are unchanged."
+          : "Published. New links can now use the updated routing rules.",
       });
     } catch (error) {
       setStatus({
@@ -701,85 +817,105 @@ function SettingsPage({ config }) {
   }
 
   const editorDisabled = phase !== "ready" || Boolean(busy);
-  let settingsState = "OFFLINE";
-  if (phase === "loading") settingsState = "CONNECTING";
-  if (phase === "ready") settingsState = "CONNECTED";
+  let settingsState = config.isLocalDevelopment ? "LOCAL MOCK" : "OFFLINE";
+  if (!config.isLocalDevelopment && phase === "loading") settingsState = "CONNECTING";
+  if (!config.isLocalDevelopment && phase === "ready") settingsState = "CONNECTED";
   let saveLabel = "Create flag";
   if (hasFlag) saveLabel = "Save draft";
   if (busy === "save") saveLabel = "Saving…";
 
   return (
-    <>
-      <section className="settings-heading">
-        <div>
-          <p className="eyebrow">FLAGSHIP / SETTINGS</p>
-          <h1>
-            Route the next
-            <br />
-            <em>generation.</em>
-          </h1>
-          <p className="hero-copy__lede">
-            Maintain the country-aware destination flag without exposing provider credentials to the
-            browser.
-          </p>
-        </div>
-        <div className="settings-status-card">
-          <span className={`state-badge state-badge--${phase}`}>{settingsState}</span>
-          <p>Worker origin</p>
-          <code>{originHost(config.workerOrigin)}</code>
-          <small>{hasFlag ? `Version ${version || "pending"}` : "No flag created"}</small>
-        </div>
-      </section>
-
-      <div className="settings-layout">
-        <section className="panel panel--editor">
-          <div className="panel-heading">
-            <div>
-              <p className="eyebrow">DEFINITION / {FLAG_KEY}</p>
-              <h2>Destination map</h2>
-            </div>
-            <div className="panel-actions">
-              <button
-                className="button button--quiet"
-                type="button"
-                onClick={() => setReloadKey((key) => key + 1)}
-                disabled={Boolean(busy) || config.isLocalDevelopment}
-              >
-                Reload
-              </button>
-              <button
-                className="button button--dark"
-                type="button"
-                onClick={handleSave}
-                disabled={editorDisabled}
-              >
-                {saveLabel}
-              </button>
-              <button
-                className="button button--primary"
-                type="button"
-                onClick={handlePublish}
-                disabled={editorDisabled || !hasFlag || !version}
-              >
-                {busy === "publish" ? "Publishing…" : "Publish"}
-              </button>
-            </div>
-          </div>
-          <DefinitionEditor
-            definition={definition}
-            setDefinition={setDefinition}
-            disabled={editorDisabled}
-          />
-          <p
-            className={`status status--${status.tone}`}
-            role={status.tone === "error" ? "alert" : undefined}
-            aria-live="polite"
-          >
-            {status.message}
-          </p>
-        </section>
+    <div className="flag-manager">
+      <div className="flag-breadcrumb" aria-label="Breadcrumb">
+        <span>Flag management</span>
+        <span aria-hidden="true">/</span>
+        <code>{FLAG_KEY}</code>
       </div>
-    </>
+
+      <header className="flag-manager-header">
+        <div className="flag-manager-title">
+          <p className="eyebrow">JSON FEATURE FLAG</p>
+          <h1 id="flag-page-title">{FLAG_KEY}</h1>
+          <p>Country and percentage routing for the protected landing page.</p>
+        </div>
+        <div className="flag-state-list" aria-label="Flag state">
+          <span className={`state-badge state-badge--${phase}`}>{settingsState}</span>
+          <span
+            className={`flag-state-chip ${definition.enabled ? "flag-state-chip--enabled" : "flag-state-chip--disabled"}`}
+          >
+            {definition.enabled ? "ENABLED" : "DISABLED"}
+          </span>
+          <span
+            className={`flag-state-chip ${hasFlag ? "flag-state-chip--saved" : "flag-state-chip--new"}`}
+          >
+            {hasFlag ? "SAVED" : "NOT SAVED"}
+          </span>
+        </div>
+      </header>
+
+      <dl className="flag-summary-strip" aria-label="Flag summary">
+        <div>
+          <dt>FLAG KEY</dt>
+          <dd>
+            <code>{FLAG_KEY}</code>
+          </dd>
+        </div>
+        <div>
+          <dt>WORKER ORIGIN</dt>
+          <dd title={config.workerOrigin}>{originHost(config.workerOrigin)}</dd>
+        </div>
+        <div>
+          <dt>VARIATIONS</dt>
+          <dd>{definition.variants.length}</dd>
+        </div>
+        <div>
+          <dt>TARGETING RULES</dt>
+          <dd>{definition.rules.length}</dd>
+        </div>
+      </dl>
+
+      <DefinitionEditor
+        definition={definition}
+        setDefinition={setDefinition}
+        disabled={editorDisabled}
+      />
+
+      <div className="flag-action-bar">
+        <p
+          className={`status status--${status.tone}`}
+          role={status.tone === "error" ? "alert" : undefined}
+          aria-live="polite"
+        >
+          {status.message}
+        </p>
+        <div className="flag-action-buttons">
+          <button
+            className="button button--quiet"
+            type="button"
+            onClick={() => setReloadKey((key) => key + 1)}
+            disabled={Boolean(busy)}
+          >
+            Reload
+          </button>
+          <button
+            className="button button--dark"
+            type="button"
+            onClick={handleSave}
+            disabled={editorDisabled}
+          >
+            {saveLabel}
+          </button>
+          <button
+            className="button button--primary"
+            type="button"
+            onClick={handlePublish}
+            disabled={editorDisabled || !hasFlag || !version}
+          >
+            {busy === "publish" ? "Publishing…" : "Publish"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -796,7 +932,7 @@ export default function App() {
   return (
     <div className="app-shell">
       <Header config={config} activeTab={activeTab} onTabChange={selectTab} />
-      <main className="main-content">
+      <main className={`main-content${activeTab === "settings" ? " main-content--settings" : ""}`}>
         <section
           id="shorten-panel"
           role="tabpanel"

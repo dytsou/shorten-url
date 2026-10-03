@@ -24,8 +24,7 @@ export function createWorkerHandler({
     const shortener = createShortener({
       worker: {
         ...config.worker,
-        safe_browsing_api_key:
-          env.SAFE_BROWSING_API_KEY ?? config.worker.safe_browsing_api_key,
+        safe_browsing_api_key: env.SAFE_BROWSING_API_KEY ?? config.worker.safe_browsing_api_key,
       },
       endpoints,
       kv: env.LINKS,
@@ -55,7 +54,9 @@ export function createWorkerHandler({
         allowedApiPaths: ["/", "/shorten"],
       });
     }
-    const variantResponse = await flagRoutes.evaluateShortening(request, requestURL.pathname);
+    const variantResponse = await flagRoutes.evaluateShortening(request, requestURL.pathname, () =>
+      fetchFrontendAsset(env, request, "/")
+    );
     if (variantResponse) return variantResponse;
     if (requestURL.pathname === "/") return fetchFrontendAsset(env, request, "/");
     if (requestURL.pathname === "/favicon.ico") {

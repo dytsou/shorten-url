@@ -13,13 +13,16 @@ function shortener() {
   };
 }
 
-function accessRequest(url) {
-  return new Request(`https://short.example${url}`, {
+function accessRequest(url, extraHeaders = {}) {
+  const request = new Request(`https://short.example${url}`, {
     headers: {
       "Cf-Access-Jwt-Assertion": "token",
       "Cf-Access-Authenticated-User-Email": "operator@example.com",
+      ...extraHeaders,
     },
   });
+  Object.defineProperty(request, "cf", { value: { country: "SG" } });
+  return request;
 }
 
 describe("Flagship route adapters", () => {
@@ -42,7 +45,40 @@ describe("Flagship route adapters", () => {
     const response = await routes.evaluateShortening(accessRequest("/"), "/");
     expect(response.status).toBe(302);
     expect(response.headers.get("location")).toBe("https://variant.example/");
+    expect(response.headers.get("set-cookie")).toContain("shorten-url-targeting-key=");
     expect(adapter.evaluate).toHaveBeenCalledTimes(1);
+  });
+
+  it("persists a sticky targeting key even when the rollout falls through", async () => {
+    const targetingKey = "visitor-key-1234567890";
+    const adapter = { evaluate: vi.fn().mockResolvedValue({ outcome: "unmatched" }) };
+    const routes = createFlagRoutes({
+      prefix: "/settings",
+      shorteningPath: "/",
+      pageUrl: "https://frontend.example",
+      shortener: shortener(),
+      env,
+      adapter,
+      createTargetingKey: () => targetingKey,
+    });
+
+    const first = await routes.evaluateShortening(
+      accessRequest("/"),
+      "/",
+      () => new Response("landing page")
+    );
+    expect(await first.text()).toBe("landing page");
+    expect(first.headers.get("set-cookie")).toContain(`${targetingKey};`);
+    expect(first.headers.get("set-cookie")).toContain("HttpOnly; Secure; SameSite=Lax");
+    expect(adapter.evaluate).toHaveBeenLastCalledWith("SG", { targetingKey });
+
+    const repeated = await routes.evaluateShortening(
+      accessRequest("/", { Cookie: `shorten-url-targeting-key=${targetingKey}` }),
+      "/",
+      () => new Response("landing page")
+    );
+    expect(repeated.headers.get("set-cookie")).toBeNull();
+    expect(adapter.evaluate).toHaveBeenLastCalledWith("SG", { targetingKey });
   });
 
   it("removes standalone settings pages without evaluating them", async () => {

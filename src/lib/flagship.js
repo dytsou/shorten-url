@@ -77,8 +77,25 @@ function runtimeDecision(details, country, durationMs) {
       durationMs,
     };
   }
-  if (!normalizedCountry) {
-    return { outcome: "unmatched", country: null, fallbackReason: "missing_country", durationMs };
+  if (reason === "DEFAULT") {
+    const destination = details.value?.url;
+    if (destination && isSafeDestination(destination) && typeof details.variant === "string") {
+      return {
+        outcome: "matched",
+        country: normalizedCountry,
+        variant: details.variant,
+        destination,
+        flagKey: details.flagKey || SHORTENING_FLAG_KEY,
+        ...(details.version ? { version: details.version } : {}),
+        durationMs,
+      };
+    }
+    return {
+      outcome: "unmatched",
+      country: normalizedCountry,
+      fallbackReason: normalizedCountry ? "no_match" : "missing_country",
+      durationMs,
+    };
   }
   const destination = details.value?.url;
   if (
@@ -90,7 +107,7 @@ function runtimeDecision(details, country, durationMs) {
     return {
       outcome: "unmatched",
       country: normalizedCountry,
-      fallbackReason: reason === "DEFAULT" ? "no_match" : "invalid_provider_value",
+      fallbackReason: "invalid_provider_value",
       durationMs,
     };
   }
@@ -122,7 +139,7 @@ export function createFlagshipAdapter(
   env,
   { fetchImpl = globalThis.fetch, now = () => Date.now(), evaluationTimeoutMs = 200 } = {}
 ) {
-  async function evaluate(country, flagKey = SHORTENING_FLAG_KEY) {
+  async function evaluate(country, { targetingKey, flagKey = SHORTENING_FLAG_KEY } = {}) {
     const started = now();
     const binding = getBinding(env);
     const normalizedCountry = normalizeCountry(country);
@@ -131,11 +148,15 @@ export function createFlagshipAdapter(
     }
     let timeoutId;
     try {
+      const context = {
+        ...(normalizedCountry ? { country: normalizedCountry } : {}),
+        ...(typeof targetingKey === "string" && targetingKey ? { targetingKey } : {}),
+      };
       const details = await Promise.race([
         binding.getObjectDetails(
           flagKey,
           { url: null },
-          normalizedCountry ? { country: normalizedCountry } : undefined
+          Object.keys(context).length ? context : undefined
         ),
         new Promise(
           (_, reject) =>
