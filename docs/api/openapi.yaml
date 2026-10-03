@@ -3,102 +3,67 @@ info:
   title: Shorten URL Service
   version: 1.0.0
   description: |
-    A modern, fast URL shortener built with Cloudflare Workers and a responsive web interface.
-    - Custom slugs are supported
-    - The homepage is served at /
-    - API is available at / (POST) for shortening URLs
-    - Short URL access is via /{key} (GET)
-    - Custom error pages for 404, security warnings, and redirects
+    URL shortening and first-party Flagship management API for the Shorten URL Worker.
+
+    Shortening requests use `POST /`, regardless of the page path. The production
+    branch may mount the product page at `/shorten`; API routes remain rooted at `/`.
+    Short links resolve through `GET /{key}`. Flag definitions are managed at
+    `/settings/api/*`; these routes require Cloudflare Access. Mutating management
+    requests also require a CSRF token obtained from `/settings/api/csrf`.
+
+    The interactive API reference is published separately from the Worker at the
+    documentation site's `/api/` path.
 
 servers:
   - url: /
 
+tags:
+  - name: Short links
+    description: Create and follow shortened URLs.
+  - name: Flagship management
+    description: Manage the `shorten-routing` flag through the Worker control plane.
+
 paths:
   /:
     post:
+      tags: [Short links]
+      operationId: shortenUrl
       summary: Shorten a URL
-      description: Create a new shortened URL, optionally with a custom slug.
+      description: Create a short URL, optionally with a custom slug.
+      security:
+        - CloudflareAccessJwt: []
+          CloudflareAccessUserEmail: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - url
-              properties:
-                url:
-                  type: string
-                  format: uri
-                  description: The URL to shorten
-                  example: https://www.example.com/very/long/url/path
-                custom_slug:
-                  type: string
-                  pattern: '^[a-zA-Z0-9\-_]+$'
-                  maxLength: 50
-                  description: Optional custom slug for the short URL
-                  example: my-custom-link
+              $ref: "#/components/schemas/ShortenRequest"
       responses:
         "201":
-          description: URL successfully shortened
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  short_url:
-                    type: string
-                    format: uri
-                    example: https://your-worker-domain.example/abc123
+          $ref: "#/components/responses/ShortenCreated"
         "400":
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: integer
-                    example: 400
-                  message:
-                    type: string
-                    example: Invalid URL format
+          $ref: "#/components/responses/BadRequest"
         "403":
-          description: Cloudflare Access headers are missing
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/AccessDenied"
         "404":
-          description: Invalid API path
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/NotFound"
         "500":
-          description: Server error
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: integer
-                    example: 500
-                  message:
-                    type: string
-                    example: Server error
+          $ref: "#/components/responses/ServerError"
     get:
-      summary: Get homepage
-      description: Fetches the configured URL shortener frontend.
+      tags: [Short links]
+      operationId: getHomepage
+      summary: Get the Shorten URL application
       responses:
         "200":
-          description: Homepage HTML
+          description: Worker-hosted application HTML.
           content:
             text/html:
               schema:
                 type: string
     options:
+      tags: [Short links]
+      operationId: preflightHomepage
       summary: Handle CORS preflight
       responses:
         "204":
@@ -106,59 +71,454 @@ paths:
 
   /{key}:
     get:
-      summary: Access shortened URL
-      description: Redirect to the original URL
+      tags: [Short links]
+      operationId: followShortUrl
+      summary: Follow a shortened URL
       parameters:
         - in: path
           name: key
           required: true
+          description: Short URL key.
           schema:
             type: string
-          description: The short URL key
           example: abc123
       responses:
         "302":
-          description: Redirect to original URL
+          description: Redirect to the stored destination.
           headers:
             Location:
+              description: Destination URL.
               schema:
                 type: string
                 format: uri
         "404":
-          description: Short URL not found
+          description: Short URL was not found.
           content:
             text/html:
               schema:
                 type: string
 
+  /settings/api/csrf:
+    get:
+      tags: [Flagship management]
+      operationId: getSettingsCsrfToken
+      summary: Get a CSRF token for management writes
+      description: |
+        Requires Cloudflare Access authentication. The token is scoped to the request
+        origin and authenticated user's email. Use it in the `X-CSRF-Token` header
+        on each management POST or PUT request.
+      security:
+        - CloudflareAccessJwt: []
+          CloudflareAccessUserEmail: []
+      responses:
+        "200":
+          description: CSRF token created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CsrfTokenResponse"
+        "403":
+          $ref: "#/components/responses/AccessDenied"
+        "503":
+          $ref: "#/components/responses/SettingsUnavailable"
+
+  /settings/api/flags:
+    get:
+      tags: [Flagship management]
+      operationId: listShorteningFlags
+      summary: Read the managed shortening flag
+      description: Returns the `shorten-routing` flag when it exists.
+      security:
+        - CloudflareAccessJwt: []
+          CloudflareAccessUserEmail: []
+      responses:
+        "200":
+          description: Managed flag list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FlagListResponse"
+        "403":
+          $ref: "#/components/responses/AccessDenied"
+        "502":
+          $ref: "#/components/responses/FlagshipError"
+
+  /settings/api/flag:
+    post:
+      tags: [Flagship management]
+      operationId: createShorteningFlag
+      summary: Create the shortening flag
+      description: |
+        Creates the `shorten-routing` flag. Send the same-origin `Origin` header
+        (or a same-origin `Referer` when `Origin` is absent) and the CSRF token
+        returned by `GET /settings/api/csrf`.
+      security:
+        - CloudflareAccessJwt: []
+          CloudflareAccessUserEmail: []
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FlagDefinition"
+      responses:
+        "201":
+          description: Flag created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FlagResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/AccessDenied"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/JsonRequired"
+        "502":
+          $ref: "#/components/responses/FlagshipError"
+
+  /settings/api/flag/shorten-routing:
+    put:
+      tags: [Flagship management]
+      operationId: saveShorteningFlag
+      summary: Save a shortening flag draft
+      description: |
+        Saves the draft using optimistic concurrency. `expectedUpdatedAt` must
+        match the currently saved version. Include the same-origin `Origin`
+        header (or a same-origin `Referer` when absent) and the CSRF token.
+      security:
+        - CloudflareAccessJwt: []
+          CloudflareAccessUserEmail: []
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveFlagRequest"
+      responses:
+        "200":
+          description: Draft saved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FlagResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/AccessDenied"
+        "409":
+          $ref: "#/components/responses/VersionConflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/JsonRequired"
+        "502":
+          $ref: "#/components/responses/FlagshipError"
+
+  /settings/api/flag/shorten-routing/publish:
+    post:
+      tags: [Flagship management]
+      operationId: publishShorteningFlag
+      summary: Publish the saved shortening flag
+      description: |
+        Publishes the current saved version. The required `expectedUpdatedAt`
+        prevents publishing a draft that changed after it was loaded. Include the
+        same-origin `Origin` header (or a same-origin `Referer` when absent) and
+        the CSRF token.
+      security:
+        - CloudflareAccessJwt: []
+          CloudflareAccessUserEmail: []
+      parameters:
+        - $ref: "#/components/parameters/CsrfToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishFlagRequest"
+      responses:
+        "200":
+          description: Flag published.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FlagResponse"
+        "403":
+          $ref: "#/components/responses/AccessDenied"
+        "409":
+          $ref: "#/components/responses/VersionConflict"
+        "413":
+          $ref: "#/components/responses/PayloadTooLarge"
+        "415":
+          $ref: "#/components/responses/JsonRequired"
+        "502":
+          $ref: "#/components/responses/FlagshipError"
+
 components:
+  securitySchemes:
+    CloudflareAccessJwt:
+      type: apiKey
+      in: header
+      name: Cf-Access-Jwt-Assertion
+      description: Cloudflare Access JWT assertion supplied by the Access-protected hostname.
+    CloudflareAccessUserEmail:
+      type: apiKey
+      in: header
+      name: Cf-Access-Authenticated-User-Email
+      description: Authenticated user's email supplied by Cloudflare Access.
+  parameters:
+    CsrfToken:
+      in: header
+      name: X-CSRF-Token
+      required: true
+      description: Token returned by `GET /settings/api/csrf`.
+      schema:
+        type: string
   schemas:
     ShortenRequest:
       type: object
-      required:
-        - url
+      required: [url]
       properties:
         url:
           type: string
           format: uri
-          description: The URL to shorten
+          description: Destination URL to shorten.
+          example: https://www.example.com/very/long/url/path
         custom_slug:
           type: string
-          pattern: '^[a-zA-Z0-9\-_]+$'
+          pattern: "^[A-Za-z0-9_-]{1,50}$"
           maxLength: 50
-          description: Optional custom slug
-
+          description: Optional custom slug; omitted or blank values use a generated key.
+          example: spring-launch
     ShortenResponse:
       type: object
+      required: [short_url]
       properties:
         short_url:
           type: string
           format: uri
-
+          example: https://your-worker-domain.example/abc123
+    CsrfTokenResponse:
+      type: object
+      required: [csrfToken]
+      properties:
+        csrfToken:
+          type: string
+          description: Origin- and user-scoped token required for management writes.
+    FlagDefinition:
+      type: object
+      description: Draft definition for the single `shorten-routing` flag.
+      required: [enabled, defaultVariant, variants]
+      properties:
+        key:
+          type: string
+          const: shorten-routing
+        description:
+          type: string
+          maxLength: 512
+        enabled:
+          type: boolean
+        defaultVariant:
+          type: string
+          description: Key of the default destination variant.
+        variants:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/FlagVariant"
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/TargetingRule"
+    FlagVariant:
+      type: object
+      required: [key, value]
+      properties:
+        key:
+          type: string
+          pattern: "^[A-Za-z0-9_-]{1,64}$"
+        value:
+          type: object
+          required: [url]
+          properties:
+            url:
+              type: string
+              format: uri
+              description: Safe HTTP or HTTPS destination for this variant.
+    TargetingRule:
+      type: object
+      required: [priority, variant]
+      properties:
+        priority:
+          type: integer
+          minimum: 1
+          description: Unique rule priority; lower numbers are evaluated first.
+        variant:
+          type: string
+          description: Variant key to serve when this rule matches.
+        conditions:
+          type: array
+          maxItems: 16
+          description: All conditions must match; an empty list matches every visitor.
+          items:
+            $ref: "#/components/schemas/TargetingCondition"
+        rolloutPercentage:
+          type: number
+          minimum: 0
+          maximum: 100
+          multipleOf: 0.01
+          description: Optional stable per-visitor rollout percentage from 0 to 100.
+    TargetingCondition:
+      type: object
+      required: [attribute, operator, value]
+      properties:
+        attribute:
+          type: string
+          enum:
+            - country
+            - regionCode
+            - continent
+            - timezone
+            - language
+            - utmSource
+            - utmMedium
+            - utmCampaign
+        operator:
+          type: string
+          enum:
+            - equals
+            - not_equals
+            - contains
+            - starts_with
+            - ends_with
+            - in
+            - not_in
+        value:
+          oneOf:
+            - type: string
+              minLength: 1
+              maxLength: 256
+            - type: array
+              minItems: 1
+              maxItems: 50
+              items:
+                type: string
+                minLength: 1
+                maxLength: 256
+          description: Use a string except with `in` and `not_in`, which require a string list. Country values must be two-letter codes.
+    SaveFlagRequest:
+      allOf:
+        - $ref: "#/components/schemas/FlagDefinition"
+        - type: object
+          required: [expectedUpdatedAt]
+          properties:
+            expectedUpdatedAt:
+              type: string
+              minLength: 1
+              description: Version identifier returned with the currently saved flag.
+    PublishFlagRequest:
+      type: object
+      required: [expectedUpdatedAt]
+      properties:
+        expectedUpdatedAt:
+          type: string
+          minLength: 1
+          description: Version identifier returned with the currently saved flag.
+    SavedFlag:
+      allOf:
+        - $ref: "#/components/schemas/FlagDefinition"
+        - type: object
+          required: [key, updatedAt]
+          properties:
+            updatedAt:
+              type: [string, "null"]
+              description: Timestamp/version for optimistic concurrency.
+    FlagResponse:
+      type: object
+      required: [flag]
+      properties:
+        flag:
+          $ref: "#/components/schemas/SavedFlag"
+    FlagListResponse:
+      type: object
+      required: [flags]
+      properties:
+        flags:
+          type: array
+          items:
+            $ref: "#/components/schemas/SavedFlag"
     ErrorResponse:
       type: object
+      required: [status, message]
       properties:
         status:
           type: integer
         message:
           type: string
+  responses:
+    ShortenCreated:
+      description: URL successfully shortened.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ShortenResponse"
+    BadRequest:
+      description: Invalid request body or flag definition.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    AccessDenied:
+      description: Cloudflare Access authentication, origin validation, or CSRF validation failed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: API route was not found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    ServerError:
+      description: Shortening request failed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    SettingsUnavailable:
+      description: Settings API is not configured.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    FlagshipError:
+      description: Flagship provider request failed.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    VersionConflict:
+      description: Expected version is missing or no longer current.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    PayloadTooLarge:
+      description: Request body exceeds the maximum allowed size.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    JsonRequired:
+      description: Management writes require an application/json request body.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"

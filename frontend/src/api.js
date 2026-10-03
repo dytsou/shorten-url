@@ -1,5 +1,5 @@
 export const DEFAULT_SETTINGS_PATH = "/settings";
-export const DEFAULT_SHORTEN_PATH = "/shorten";
+export const DEFAULT_SHORTEN_PATH = "/";
 export const WORKSPACE_TABS = [
   { id: "shorten", label: "Shorten" },
   { id: "settings", label: "Flagship" },

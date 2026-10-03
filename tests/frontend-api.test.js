@@ -34,24 +34,23 @@ describe("frontend API configuration", () => {
     expect(normalizePath("////")).toBe("/");
   });
 
-  it("uses same-origin Worker paths when the shell is hosted at the root", () => {
+  it("keeps the shortening API rooted when the production page is mounted at /shorten", () => {
     const config = createFrontendConfig({
       windowRef: {
-        location: { origin: "https://short.example", pathname: "/" },
+        location: { origin: "https://short.example", pathname: "/shorten" },
       },
       documentRef: documentWithMeta({
-        "shorten-url-home-path": "/",
         "shorten-url-settings-path": "/settings",
-        "shorten-url-shorten-path": "/shorten",
+        "shorten-url-shorten-path": "/",
       }),
     });
 
     expect(config.workerOrigin).toBe("https://short.example");
     expect(config.isLocalDevelopment).toBe(false);
-    expect(config.homePath).toBe("/");
+    expect(config.homePath).toBe("/shorten");
     expect(config.settingsPath).toBe("/settings");
-    expect(config.shortenApiPath).toBe("/shorten");
-    expect(workerUrl(config.shortenApiPath, config)).toBe("https://short.example/shorten");
+    expect(config.shortenApiPath).toBe("/");
+    expect(workerUrl(config.shortenApiPath, config)).toBe("https://short.example/");
   });
 
   it("uses the configured Worker origin without confusing a GitHub Pages path for a route", () => {
@@ -83,6 +82,7 @@ describe("frontend API configuration", () => {
     expect(config.homePath).toBe("/");
     expect(config.isLocalDevelopment).toBe(true);
     expect(config.settingsPath).toBe("/settings");
+    expect(config.shortenApiPath).toBe("/");
     expect(settingsApiUrl("/flags", config)).toBe("http://localhost:8787/settings/api/flags");
   });
 
@@ -117,7 +117,7 @@ describe("frontend workspace tabs", () => {
 
 describe("frontend API calls", () => {
   it("posts the shortener payload and includes credentials for Access", async () => {
-    const config = { workerOrigin: "https://worker.example", shortenApiPath: "/shorten" };
+    const config = { workerOrigin: "https://worker.example", shortenApiPath: "/" };
     const calls = [];
     const shortUrl = await shortenUrl(
       { url: " https://example.com/path ", customSlug: " launch " },
@@ -129,7 +129,7 @@ describe("frontend API calls", () => {
     );
 
     expect(shortUrl).toBe("https://worker.example/launch");
-    expect(calls[0].url).toBe("https://worker.example/shorten");
+    expect(calls[0].url).toBe("https://worker.example/");
     expect(calls[0].options.credentials).toBe("include");
     expect(JSON.parse(calls[0].options.body)).toEqual({
       url: "https://example.com/path",

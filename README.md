@@ -38,7 +38,7 @@ pnpm build
 pnpm dev
 ```
 
-`pnpm dev`, `pnpm preview`, and `pnpm deploy` build `frontend/dist` before running Wrangler. The deployed Worker serves the UI at `GET /`; the frontend development route may use `/shorten`. In either case, the Shorten and Flagship views switch with frontend tabs. The UI makes same-origin requests to `POST /shorten` and `/settings/api/*`; `POST /` remains a compatibility endpoint. Standalone settings pages are not exposed.
+`pnpm dev`, `pnpm preview`, and `pnpm deploy` build `frontend/dist` before running Wrangler. The Worker serves the UI at `GET /`. Only the `production` branch mounts its product page at `/shorten`; other branch previews stay at `/`. Regardless of the page path, the UI sends API requests to `POST /` and `/settings/api/*`. Standalone settings pages are not exposed.
 
 Production must use an Access-protected custom hostname, set `workers_dev = false`, and set `ACCESS_ALLOWED_HOSTS` to that hostname. Keep `CLOUDFLARE_API_TOKEN`, `FLAGSHIP_CSRF_SECRET`, and provider credentials in Cloudflare/GitHub secrets, never Vite metadata or tracked configuration. Optional `FRONTEND_URL` and `FRONTEND_PAGES_BASE` retain legacy error/interstitial pages only; they are not used to serve the normal UI.
 
@@ -101,13 +101,13 @@ The Worker returns short URLs using the request's origin, so configure its publi
 
 ### Frontend Configuration
 
-| Option                   | Description                                                       | Default |
-| ------------------------ | ----------------------------------------------------------------- | ------- |
-| `frontend.url`           | Optional origin for legacy error and interstitial pages           | `""`    |
-| `frontend.pagesBase`      | Base URL for hosted error and interstitial pages                  | `url`   |
-| `frontend.workerOrigin`  | Public Worker origin for a separately hosted frontend             | `""`    |
-| `frontend.displayDomain` | Domain shown in UI (null = auto-detect)                           | `null`  |
-| `frontend.theme`         | UI theme selection                                                | `""`    |
+| Option                   | Description                                             | Default |
+| ------------------------ | ------------------------------------------------------- | ------- |
+| `frontend.url`           | Optional origin for legacy error and interstitial pages | `""`    |
+| `frontend.pagesBase`     | Base URL for hosted error and interstitial pages        | `url`   |
+| `frontend.workerOrigin`  | Public Worker origin for a separately hosted frontend   | `""`    |
+| `frontend.displayDomain` | Domain shown in UI (null = auto-detect)                 | `null`  |
+| `frontend.theme`         | UI theme selection                                      | `""`    |
 
 ### Worker Configuration
 
@@ -117,7 +117,7 @@ The Worker returns short URLs using the request's origin, so configure its publi
 | `worker.cors`                   | Add wildcard CORS headers for API responses                     | `"on"`     |
 | `worker.unique_link`            | Reuse a key when the same URL has already been shortened        | `true`     |
 | `worker.custom_link`            | Allow custom slugs                                              | `true`     |
-| `SAFE_BROWSING_API_KEY`         | Optional Google Safe Browsing API key stored as a Worker secret  | Unset      |
+| `SAFE_BROWSING_API_KEY`         | Optional Google Safe Browsing API key stored as a Worker secret | Unset      |
 | `worker.min_random_key_length`  | Minimum length for generated keys                               | `6`        |
 | `worker.random_chars`           | Characters used for generated keys                              | See config |
 | `worker.max_custom_slug_length` | Maximum length for custom slugs                                 | `50`       |
@@ -125,12 +125,12 @@ The Worker returns short URLs using the request's origin, so configure its publi
 
 ### Security Configuration
 
-| Option                                | Description                                                          | Default |
-| ------------------------------------- | -------------------------------------------------------------------- | ------- |
-| `security.rate_limit`                | Not implemented by the Worker                                        | Unused  |
-| `security.validate_urls`             | URLs are always validated; this setting does not toggle validation  | Unused  |
-| `security.blocked_domains`           | Domain blocklists are not implemented by the Worker                 | Unused  |
-| `security.block_suspicious_domains`  | Domain blocklists are not implemented by the Worker                 | Unused  |
+| Option                              | Description                                                        | Default |
+| ----------------------------------- | ------------------------------------------------------------------ | ------- |
+| `security.rate_limit`               | Not implemented by the Worker                                      | Unused  |
+| `security.validate_urls`            | URLs are always validated; this setting does not toggle validation | Unused  |
+| `security.blocked_domains`          | Domain blocklists are not implemented by the Worker                | Unused  |
+| `security.block_suspicious_domains` | Domain blocklists are not implemented by the Worker                | Unused  |
 
 ### Storage Configuration
 
@@ -180,7 +180,7 @@ The API reference is a static Swagger UI published from `docs/api/`; it is not s
 
 - **Format**: OpenAPI 3.1.0
 - **Location**: [docs/api/openapi.yaml](docs/api/openapi.yaml)
-- **Interactive UI**: [docs/api/index.html](docs/api/index.html), published at `/api/` under the Pages base URL
+- **Interactive UI**: [docs/api/index.html](docs/api/index.html), published at `/api/` from the Pages site root
 - **Offline Access**: [docs/api/index.html](docs/api/index.html) for local viewing
 
 ### Shorten URL
@@ -194,7 +194,7 @@ The API reference is a static Swagger UI published from `docs/api/`; it is not s
 }
 ```
 
-`custom_slug` is optional. The default Worker template requires Cloudflare Access headers before creating a link.
+The endpoint stays at the origin root even when the production page is mounted at `/shorten`. `custom_slug` is optional. The default Worker template requires Cloudflare Access headers before creating a link.
 
 **Response (201 Created):**
 
@@ -223,6 +223,20 @@ Redirects to the stored destination with HTTP 302. Query parameters from the sho
 
 - **GET** `/` - Serves the Worker-hosted React interface
 - **OPTIONS** - Returns a CORS preflight response
+
+### Flagship Management API
+
+The authenticated control plane manages the `shorten-routing` flag under `/settings/api`. Requests require Cloudflare Access authentication. Fetch a CSRF token before sending a write; POST and PUT requests must include that token in `X-CSRF-Token`, use `application/json`, and come from the same origin as the UI.
+
+| Method | Path                                         | Purpose                                                   |
+| ------ | -------------------------------------------- | --------------------------------------------------------- |
+| `GET`  | `/settings/api/csrf`                         | Get a CSRF token for the signed-in Access user and origin |
+| `GET`  | `/settings/api/flags`                        | Read the saved shortening flag                            |
+| `POST` | `/settings/api/flag`                         | Create the `shorten-routing` flag                         |
+| `PUT`  | `/settings/api/flag/shorten-routing`         | Save a draft with `expectedUpdatedAt` concurrency control |
+| `POST` | `/settings/api/flag/shorten-routing/publish` | Publish the saved version                                 |
+
+Targeting rules are evaluated by ascending priority. Conditions in a rule are combined with AND and can target country, region, continent, timezone, browser language, or UTM source, medium, and campaign. Supported operators are `equals`, `not_equals`, `contains`, `starts_with`, `ends_with`, `in`, and `not_in`. A rule can also set `rolloutPercentage` from 0 to 100; the Worker uses a stable visitor key for the canary assignment. See the OpenAPI schema for request and response shapes.
 
 ## 🛠️ Development
 
@@ -300,7 +314,7 @@ shorten-url/
 **Frontend not loading:**
 
 - Check that the Worker has an `ASSETS` binding and `frontend/dist/index.html` was built
-- If shortening returns an invalid-path response, check the frontend POST path (`/shorten` or the compatibility `/` route)
+- If shortening returns an invalid-path response, check that the frontend POST path is `/`
 - Enable CORS if the frontend and Worker use different origins
 
 **Rate limiting issues:**
@@ -336,7 +350,7 @@ If you encounter any issues or have questions:
 - [ ] Configured `wrangler.toml` with correct KV namespace ID
 - [ ] Protected the Worker with a Cloudflare Access policy
 - [ ] Deployed the Worker using `pnpm deploy`
-- [ ] Tested URL shortening at `POST /shorten` and the compatibility `POST /` route
+- [ ] Tested URL shortening at `POST /`
 - [ ] Verified copy-to-clipboard feature works
 - [ ] Tested custom error pages (404, security warnings)
 - [ ] (Optional) Configured custom domain
