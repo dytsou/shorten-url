@@ -4,18 +4,35 @@ import {
   createShorteningFlag,
   errorMessage,
   loadSettings,
-  nextWorkspaceTab,
   publishShorteningFlag,
   shortenUrl,
   updateShorteningFlag,
-  workerUrl,
-  WORKSPACE_TABS,
 } from "./api.js";
 import { loadLocalFlagMock, publishLocalFlagMock, saveLocalFlagMock } from "./local-flag-mock.js";
 import "./styles/app.css";
 
 const FLAG_KEY = "shorten-routing";
 let nextEditorItemId = 0;
+const FLAGSHIP_CONTEXT_FIELDS = [
+  { key: "country", label: "Country code", example: "US or CA" },
+  { key: "regionCode", label: "Region code", example: "TX" },
+  { key: "continent", label: "Continent", example: "NA" },
+  { key: "timezone", label: "Time zone", example: "America/Chicago" },
+  { key: "language", label: "Browser language", example: "en-us" },
+  { key: "utmSource", label: "UTM source", example: "newsletter" },
+  { key: "utmMedium", label: "UTM medium", example: "email" },
+  { key: "utmCampaign", label: "UTM campaign", example: "spring-launch" },
+];
+const TARGETING_OPERATORS = [
+  { key: "equals", label: "is" },
+  { key: "not_equals", label: "is not" },
+  { key: "contains", label: "contains" },
+  { key: "starts_with", label: "starts with" },
+  { key: "ends_with", label: "ends with" },
+  { key: "in", label: "is one of" },
+  { key: "not_in", label: "is not one of" },
+];
+const LIST_OPERATORS = new Set(["in", "not_in"]);
 
 function createEditorItemId(prefix) {
   nextEditorItemId += 1;
@@ -25,7 +42,7 @@ function createEditorItemId(prefix) {
 function emptyDefinition() {
   return {
     key: FLAG_KEY,
-    description: "Country-aware destinations and gradual rollouts for the landing page.",
+    description: "Route visitors to the right destination using audience segments and rollouts.",
     enabled: true,
     defaultVariant: "control",
     variants: [{ id: createEditorItemId("variant"), key: "control", url: "" }],
@@ -50,6 +67,45 @@ function normalizeDefinition(flag) {
       }))
     : [];
   const normalizedVariants = variants.length ? variants : emptyDefinition().variants;
+  const rules = Array.isArray(flag.rules)
+    ? flag.rules
+        .map((rule, index) => {
+          const legacyCountries = Array.isArray(rule?.countries)
+            ? rule.countries
+            : typeof rule?.country === "string"
+              ? [rule.country]
+              : [];
+          const sourceConditions = Array.isArray(rule?.conditions)
+            ? rule.conditions
+            : legacyCountries.length
+              ? [{ attribute: "country", operator: "in", value: legacyCountries }]
+              : [];
+          return {
+            id: createEditorItemId("rule"),
+            priority: Number.isInteger(rule?.priority) ? rule.priority : index + 1,
+            variant: typeof rule?.variant === "string" ? rule.variant : normalizedVariants[0].key,
+            conditions: sourceConditions.map((condition) => ({
+              id: createEditorItemId("condition"),
+              attribute: FLAGSHIP_CONTEXT_FIELDS.some((field) => field.key === condition?.attribute)
+                ? condition.attribute
+                : "country",
+              operator: TARGETING_OPERATORS.some((operator) => operator.key === condition?.operator)
+                ? condition.operator
+                : "equals",
+              value: Array.isArray(condition?.value)
+                ? condition.value.join(", ")
+                : typeof condition?.value === "string"
+                  ? condition.value
+                  : "",
+            })),
+            rolloutPercentage: Number.isFinite(rule?.rolloutPercentage)
+              ? rule.rolloutPercentage
+              : "",
+          };
+        })
+        .sort((left, right) => left.priority - right.priority)
+        .map((rule, index) => ({ ...rule, priority: index + 1 }))
+    : [];
 
   return {
     key: typeof flag.key === "string" && flag.key ? flag.key : FLAG_KEY,
@@ -60,18 +116,20 @@ function normalizeDefinition(flag) {
         ? flag.defaultVariant
         : normalizedVariants[0].key,
     variants: normalizedVariants,
-    rules: Array.isArray(flag.rules)
-      ? flag.rules.map((rule, index) => ({
-          id: createEditorItemId("rule"),
-          priority: Number.isInteger(rule?.priority) ? rule.priority : index + 1,
-          variant: typeof rule?.variant === "string" ? rule.variant : normalizedVariants[0].key,
-          countries: Array.isArray(rule?.countries)
-            ? rule.countries.filter((country) => typeof country === "string")
-            : [],
-          rolloutPercentage: Number.isFinite(rule?.rolloutPercentage) ? rule.rolloutPercentage : "",
-        }))
-      : [],
+    rules,
   };
+}
+
+function conditionValueForPayload(condition) {
+  const value = condition.value.trim();
+  if (!LIST_OPERATORS.has(condition.operator)) {
+    return condition.attribute === "country" ? value.toUpperCase() : value;
+  }
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => (condition.attribute === "country" ? item.toUpperCase() : item));
 }
 
 function toFlagPayload(definition) {
@@ -84,10 +142,14 @@ function toFlagPayload(definition) {
       key: variant.key.trim(),
       value: { url: variant.url.trim() },
     })),
-    rules: definition.rules.map((rule) => ({
-      priority: Number(rule.priority),
+    rules: definition.rules.map((rule, index) => ({
+      priority: index + 1,
       variant: rule.variant,
-      countries: rule.countries.map((country) => country.trim().toUpperCase()).filter(Boolean),
+      conditions: rule.conditions.map((condition) => ({
+        attribute: condition.attribute,
+        operator: condition.operator,
+        value: conditionValueForPayload(condition),
+      })),
       ...(rule.rolloutPercentage === "" ||
       rule.rolloutPercentage === undefined ||
       rule.rolloutPercentage === null
@@ -108,29 +170,39 @@ function draftProblem(definition) {
     return "Every variant needs a destination URL.";
   }
 
-  const priorities = definition.rules.map((rule) => Number(rule.priority));
-  if (priorities.some((priority) => !Number.isInteger(priority) || priority < 1)) {
-    return "Rule priorities must be positive whole numbers.";
-  }
-  if (priorities.length !== new Set(priorities).size) return "Rule priorities must be unique.";
   if (definition.rules.some((rule) => !keys.includes(rule.variant))) {
-    return "Each rule needs an existing variant.";
+    return "Choose an existing variant for every segment.";
   }
   for (const rule of definition.rules) {
-    const countries = rule.countries.map((country) => country.trim().toUpperCase()).filter(Boolean);
+    for (const condition of rule.conditions) {
+      if (!condition.value.trim()) {
+        return "Complete each condition or remove it before saving.";
+      }
+      if (condition.attribute === "country") {
+        const values = LIST_OPERATORS.has(condition.operator)
+          ? condition.value.split(",").map((value) => value.trim().toUpperCase())
+          : [condition.value.trim().toUpperCase()];
+        if (values.some((value) => !/^[A-Z]{2}$/.test(value))) {
+          return "Country conditions need two-letter codes, such as US or CA.";
+        }
+        if (new Set(values).size !== values.length) {
+          return "Remove duplicate country codes from a condition.";
+        }
+      }
+      if (LIST_OPERATORS.has(condition.operator)) {
+        const values = condition.value
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean);
+        if (!values.length) return "Enter at least one value for an ‘is one of’ condition.";
+        if (new Set(values).size !== values.length)
+          return "Remove duplicate values from a condition.";
+      }
+    }
     const hasRollout =
       rule.rolloutPercentage !== "" &&
       rule.rolloutPercentage !== undefined &&
       rule.rolloutPercentage !== null;
-    if (countries.length === 0 && !hasRollout) {
-      return "Each rule needs a country or a rollout percentage.";
-    }
-    if (countries.some((country) => !/^[A-Z]{2}$/.test(country))) {
-      return "Countries must use two-letter country codes.";
-    }
-    if (new Set(countries).size !== countries.length) {
-      return "Countries in a rule must be unique.";
-    }
     if (hasRollout) {
       const percentage = Number(rule.rolloutPercentage);
       if (
@@ -159,49 +231,6 @@ async function copyText(value) {
     throw new Error("Copy is not available");
   }
   await navigator.clipboard.writeText(value);
-}
-
-function Header({ config, activeTab, onTabChange }) {
-  const homeHref = workerUrl(config.homePath, config);
-
-  function handleTabKeyDown(event) {
-    const nextTab = nextWorkspaceTab(activeTab, event.key);
-    if (!nextTab) return;
-    event.preventDefault();
-    onTabChange(nextTab);
-    document.getElementById(`${nextTab}-tab`)?.focus();
-  }
-
-  return (
-    <header className="topbar">
-      <a className="brand" href={homeHref} aria-label="Shorten URL home">
-        <span className="brand__mark">↗</span>
-        <span>shorten.url</span>
-      </a>
-      <div className="topbar__meta">
-        <span className="online-dot" aria-hidden="true" />
-        <span>EDGE LINK DESK</span>
-        <div className="topbar__tabs" role="tablist" aria-label="Workspace view">
-          {WORKSPACE_TABS.map(({ id: tab, label }) => (
-            <button
-              id={`${tab}-tab`}
-              className="topbar__tab"
-              type="button"
-              role="tab"
-              aria-controls={`${tab}-panel`}
-              aria-selected={activeTab === tab}
-              tabIndex={activeTab === tab ? 0 : -1}
-              key={tab}
-              onClick={() => onTabChange(tab)}
-              onKeyDown={handleTabKeyDown}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-    </header>
-  );
 }
 
 function ShortenerPage({ config }) {
@@ -244,55 +273,35 @@ function ShortenerPage({ config }) {
   }
 
   return (
-    <>
-      <section className="hero-grid">
-        <div className="hero-copy">
-          <p className="eyebrow">01 / CREATE A LINK</p>
-          <h1>
-            Make the long URL
-            <br />
-            <em>disappear.</em>
-          </h1>
-          <p className="hero-copy__lede">
-            One clean link for the edge. Add a memorable slug when the destination needs a little
-            more signal.
-          </p>
-          <div className="hero-notes" aria-label="Service characteristics">
-            <span>
-              <strong>01</strong> WARP protected
-            </span>
-            <span>
-              <strong>02</strong> KV backed
-            </span>
-            <span>
-              <strong>03</strong> Global edge
-            </span>
-          </div>
+    <div className="shorten-page">
+      <div className="page-heading">
+        <div>
+          <h1 id="shorten-page-title">Shorten URL</h1>
+          <p>Create a short link from a destination URL.</p>
         </div>
+      </div>
 
-        <form className="shorten-card" onSubmit={handleSubmit}>
-          <div className="card-topline">
-            <span>NEW SHORT LINK</span>
-          </div>
-          <div className="field-group">
-            <label htmlFor="long-url">Destination URL</label>
-            <input
-              id="long-url"
-              name="url"
-              type="url"
-              value={longUrl}
-              onChange={(event) => setLongUrl(event.target.value)}
-              placeholder="https://example.com/a/very/long/path"
-              autoComplete="url"
-              required
-            />
-          </div>
+      <form className="shorten-card" onSubmit={handleSubmit}>
+        <div className="field-group">
+          <label htmlFor="long-url">Destination URL</label>
+          <input
+            id="long-url"
+            name="url"
+            type="url"
+            value={longUrl}
+            onChange={(event) => setLongUrl(event.target.value)}
+            placeholder="https://example.com/a/very/long/path"
+            autoComplete="url"
+            required
+          />
+        </div>
+        <div className="shorten-form__actions">
           <div className="field-group">
             <label htmlFor="custom-slug">
               Custom slug <span className="label-note">optional</span>
             </label>
             <div className="slug-input">
-              <span aria-hidden="true">/</span>
+              <span className="slug-prefix">{originHost(config.workerOrigin)}/</span>
               <input
                 id="custom-slug"
                 name="customSlug"
@@ -304,21 +313,18 @@ function ShortenerPage({ config }) {
                 autoComplete="off"
               />
             </div>
+            <p className="field-help">Leave blank to generate a short key automatically.</p>
           </div>
           <button className="button button--primary button--wide" type="submit" disabled={busy}>
             {busy ? "Creating link…" : "Shorten URL"}
-            <span aria-hidden="true">↗</span>
           </button>
-          <p className="form-footnote">
-            Requests are sent to <code>{originHost(config.workerOrigin)}</code>.
+        </div>
+        {error && (
+          <p className="status status--error" role="alert">
+            {error}
           </p>
-          {error && (
-            <p className="status status--error" role="alert">
-              {error}
-            </p>
-          )}
-        </form>
-      </section>
+        )}
+      </form>
 
       {shortUrl && (
         <section className="result-card" aria-live="polite">
@@ -338,31 +344,7 @@ function ShortenerPage({ config }) {
           </div>
         </section>
       )}
-
-      <section className="process-strip" aria-label="How it works">
-        <div className="process-strip__intro">
-          <p className="eyebrow">THE SMALL PRINT</p>
-          <p>
-            Short links stay simple. The Worker handles validation, access, storage, and redirects.
-          </p>
-        </div>
-        <div className="process-step">
-          <span>01</span>
-          <strong>Paste</strong>
-          <p>Give us the full destination.</p>
-        </div>
-        <div className="process-step">
-          <span>02</span>
-          <strong>Shape</strong>
-          <p>Optionally name the link.</p>
-        </div>
-        <div className="process-step">
-          <span>03</span>
-          <strong>Share</strong>
-          <p>Copy the edge-ready result.</p>
-        </div>
-      </section>
-    </>
+    </div>
   );
 }
 
@@ -431,9 +413,16 @@ function DefinitionEditor({ definition, setDefinition, disabled }) {
         ...current.rules,
         {
           id: createEditorItemId("rule"),
-          priority: Math.max(0, ...current.rules.map((rule) => Number(rule.priority) || 0)) + 1,
+          priority: current.rules.length + 1,
           variant: current.variants[0]?.key || "",
-          countries: ["US"],
+          conditions: [
+            {
+              id: createEditorItemId("condition"),
+              attribute: "country",
+              operator: "in",
+              value: "US",
+            },
+          ],
           rolloutPercentage: "",
         },
       ],
@@ -449,15 +438,78 @@ function DefinitionEditor({ definition, setDefinition, disabled }) {
     }));
   }
 
+  function addCondition(ruleIndex) {
+    setDefinition((current) => ({
+      ...current,
+      rules: current.rules.map((rule, index) =>
+        index === ruleIndex
+          ? {
+              ...rule,
+              conditions: [
+                ...rule.conditions,
+                {
+                  id: createEditorItemId("condition"),
+                  attribute: "language",
+                  operator: "equals",
+                  value: "en-us",
+                },
+              ],
+            }
+          : rule
+      ),
+    }));
+  }
+
+  function updateCondition(ruleIndex, conditionIndex, field, value) {
+    setDefinition((current) => ({
+      ...current,
+      rules: current.rules.map((rule, index) =>
+        index === ruleIndex
+          ? {
+              ...rule,
+              conditions: rule.conditions.map((condition, itemIndex) =>
+                itemIndex === conditionIndex ? { ...condition, [field]: value } : condition
+              ),
+            }
+          : rule
+      ),
+    }));
+  }
+
+  function removeCondition(ruleIndex, conditionIndex) {
+    setDefinition((current) => ({
+      ...current,
+      rules: current.rules.map((rule, index) =>
+        index === ruleIndex
+          ? {
+              ...rule,
+              conditions: rule.conditions.filter((_, itemIndex) => itemIndex !== conditionIndex),
+            }
+          : rule
+      ),
+    }));
+  }
+
+  function moveRule(ruleIndex, direction) {
+    setDefinition((current) => {
+      const nextIndex = ruleIndex + direction;
+      if (nextIndex < 0 || nextIndex >= current.rules.length) return current;
+      const rules = [...current.rules];
+      [rules[ruleIndex], rules[nextIndex]] = [rules[nextIndex], rules[ruleIndex]];
+      return { ...current, rules: rules.map((rule, index) => ({ ...rule, priority: index + 1 })) };
+    });
+  }
+
   return (
-    <fieldset className="flag-editor" aria-label="Flag configuration" disabled={disabled}>
+    <fieldset className="flag-editor" disabled={disabled}>
+      <legend className="visually-hidden">Flag configuration</legend>
       <nav className="flag-section-nav" aria-label="Flag configuration sections">
         <a href="#flag-details">Details</a>
         <a href="#flag-variants">
-          Variations <span>{definition.variants.length}</span>
+          Variants <span>{definition.variants.length}</span>
         </a>
         <a href="#flag-rules">
-          Targeting rules <span>{definition.rules.length}</span>
+          Segments <span>{definition.rules.length}</span>
         </a>
       </nav>
 
@@ -487,7 +539,7 @@ function DefinitionEditor({ definition, setDefinition, disabled }) {
           <label className="toggle-row" htmlFor="flag-enabled">
             <span>
               <strong>Flag enabled</strong>
-              <small>When disabled, visitors receive the default variation.</small>
+              <small>When disabled, Flagship returns the default variant.</small>
             </span>
             <input
               id="flag-enabled"
@@ -503,14 +555,16 @@ function DefinitionEditor({ definition, setDefinition, disabled }) {
       <section id="flag-variants" className="flag-section panel">
         <div className="flag-section-heading">
           <div>
-            <p className="eyebrow">02 / VARIATIONS</p>
-            <h2>Variations</h2>
-            <p className="helper-text">Each variation returns one safe HTTP(S) destination.</p>
+            <p className="eyebrow">02 / VARIANTS</p>
+            <h2>Variants</h2>
+            <p className="helper-text">
+              Each variant is a destination URL. Choose the control or fallback with “Default”.
+            </p>
           </div>
           <div className="flag-section-tools">
             <span className="count-chip">{definition.variants.length} total</span>
             <button className="button button--small" type="button" onClick={addVariant}>
-              + Add variation
+              + Add variant
             </button>
           </div>
         </div>
@@ -551,7 +605,7 @@ function DefinitionEditor({ definition, setDefinition, disabled }) {
                 type="button"
                 onClick={() => removeVariant(index)}
                 disabled={definition.variants.length <= 1}
-                aria-label={`Remove ${variant.key || "variation"}`}
+                aria-label={`Remove ${variant.key || "variant"}`}
               >
                 ×
               </button>
@@ -561,104 +615,284 @@ function DefinitionEditor({ definition, setDefinition, disabled }) {
       </section>
 
       <section id="flag-rules" className="flag-section panel">
-        <div className="flag-section-heading flag-section-heading--rules">
+        <div className="flag-section-heading">
           <div>
-            <p className="eyebrow">03 / TARGETING</p>
-            <h2>Targeting rules</h2>
+            <p className="eyebrow">03 / AUDIENCE</p>
+            <h2>Segments</h2>
             <p className="helper-text">
-              Rules run by priority. Blank countries match every country; browsers keep a stable
-              bucket. Use cumulative rollout thresholds for a multi-variation split.
+              OpenFlagr calls these Segments: conditions are constraints, and rollout controls the
+              share sent to a variant. Segments run top to bottom; the first match wins.
             </p>
           </div>
           <div className="flag-section-tools">
             <span className="count-chip">{definition.rules.length} total</span>
             <button className="button button--small" type="button" onClick={addRule}>
-              + Add rule
+              + Add segment
             </button>
           </div>
         </div>
+        <div className="context-note">
+          <span aria-hidden="true">i</span>
+          <p>
+            Available context: country, region, continent, time zone, browser language, and UTM
+            source, medium, and campaign. If a request has no value for a condition, that segment
+            will not match.
+          </p>
+        </div>
         {definition.rules.length === 0 ? (
-          <div className="empty-state">
-            <strong>No targeting rules</strong>
-            <span>All visitors receive the default variation until you add a rule.</span>
+          <div className="segment-empty-state">
+            <span className="segment-empty-state__step">DEFAULT</span>
+            <div>
+              <strong>
+                Every visitor gets {definition.defaultVariant || "the default variant"}
+              </strong>
+              <p>Add a segment to target an audience or start a canary rollout.</p>
+            </div>
           </div>
         ) : (
-          <div className="rule-list">
-            <div className="rule-list-heading" aria-hidden="true">
-              <span>Priority</span>
-              <span>Country audience</span>
-              <span>Rollout</span>
-              <span>Serve variation</span>
-              <span />
-            </div>
+          <div className="segment-list">
             {definition.rules.map((rule, index) => (
-              <div className="rule-row" key={rule.id}>
-                <div className="field-group rule-priority-field">
-                  <label htmlFor={`rule-priority-${rule.id}`}>Priority</label>
-                  <input
-                    id={`rule-priority-${rule.id}`}
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={rule.priority}
-                    onChange={(event) => updateRule(index, "priority", event.target.value)}
-                  />
-                </div>
-                <div className="field-group rule-country-field">
-                  <label htmlFor={`rule-countries-${rule.id}`}>Countries (optional)</label>
-                  <input
-                    id={`rule-countries-${rule.id}`}
-                    value={rule.countries.join(", ")}
-                    onChange={(event) =>
-                      updateRule(
-                        index,
-                        "countries",
-                        event.target.value.split(",").map((country) => country.trim())
-                      )
-                    }
-                    placeholder="All countries or US, CA"
-                  />
-                </div>
-                <div className="field-group rule-rollout-field">
-                  <label htmlFor={`rule-rollout-${rule.id}`}>Rollout (%)</label>
-                  <input
-                    id={`rule-rollout-${rule.id}`}
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.01"
-                    value={rule.rolloutPercentage}
-                    onChange={(event) => updateRule(index, "rolloutPercentage", event.target.value)}
-                    placeholder="100"
-                  />
-                </div>
-                <div className="field-group rule-variation-field">
-                  <label htmlFor={`rule-variant-${rule.id}`}>Serve</label>
-                  <select
-                    id={`rule-variant-${rule.id}`}
-                    value={rule.variant}
-                    onChange={(event) => updateRule(index, "variant", event.target.value)}
+              <article className="segment-card" key={rule.id}>
+                <header className="segment-card__header">
+                  <div className="segment-card__identity">
+                    <span className="segment-priority">{index + 1}</span>
+                    <div>
+                      <h3>Segment {index + 1}</h3>
+                      <p>
+                        Priority {index + 1} · checked {index === 0 ? "first" : "in order"}
+                      </p>
+                    </div>
+                  </div>
+                  <div
+                    className="segment-card__actions"
+                    aria-label={`Segment ${index + 1} actions`}
                   >
-                    {definition.variants.map((variant) => (
-                      <option key={`${rule.id}-${variant.id}`} value={variant.key}>
-                        {variant.key || "Unnamed"}
-                      </option>
-                    ))}
-                  </select>
+                    <button
+                      className="icon-button segment-order-button"
+                      type="button"
+                      onClick={() => moveRule(index, -1)}
+                      disabled={index === 0}
+                      aria-label={`Move segment ${index + 1} up`}
+                      title="Move up"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      className="icon-button segment-order-button"
+                      type="button"
+                      onClick={() => moveRule(index, 1)}
+                      disabled={index === definition.rules.length - 1}
+                      aria-label={`Move segment ${index + 1} down`}
+                      title="Move down"
+                    >
+                      ↓
+                    </button>
+                    <button
+                      className="icon-button segment-remove-button"
+                      type="button"
+                      onClick={() =>
+                        updateDefinition({
+                          rules: definition.rules.filter((_, ruleIndex) => ruleIndex !== index),
+                        })
+                      }
+                      aria-label={`Remove segment ${index + 1}`}
+                      title="Remove segment"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </header>
+
+                <fieldset className="segment-stage segment-conditions">
+                  <legend>
+                    <span>IF</span> Conditions <small>all must match</small>
+                  </legend>
+                  {rule.conditions.length === 0 ? (
+                    <p className="segment-all-visitors">
+                      This segment matches everyone. Add a condition to narrow the audience.
+                    </p>
+                  ) : (
+                    <div className="condition-list">
+                      {rule.conditions.map((condition, conditionIndex) => {
+                        const contextField = FLAGSHIP_CONTEXT_FIELDS.find(
+                          (field) => field.key === condition.attribute
+                        );
+                        const listCondition = LIST_OPERATORS.has(condition.operator);
+                        const helpId = `condition-help-${rule.id}-${condition.id}`;
+                        return (
+                          <div className="condition-row" key={condition.id}>
+                            <div className="field-group condition-attribute-field">
+                              <label htmlFor={`condition-field-${condition.id}`}>Attribute</label>
+                              <select
+                                id={`condition-field-${condition.id}`}
+                                value={condition.attribute}
+                                onChange={(event) =>
+                                  updateCondition(
+                                    index,
+                                    conditionIndex,
+                                    "attribute",
+                                    event.target.value
+                                  )
+                                }
+                              >
+                                {FLAGSHIP_CONTEXT_FIELDS.map((field) => (
+                                  <option key={field.key} value={field.key}>
+                                    {field.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="field-group condition-operator-field">
+                              <label htmlFor={`condition-operator-${condition.id}`}>Operator</label>
+                              <select
+                                id={`condition-operator-${condition.id}`}
+                                value={condition.operator}
+                                onChange={(event) =>
+                                  updateCondition(
+                                    index,
+                                    conditionIndex,
+                                    "operator",
+                                    event.target.value
+                                  )
+                                }
+                              >
+                                {TARGETING_OPERATORS.map((operator) => (
+                                  <option key={operator.key} value={operator.key}>
+                                    {operator.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="field-group condition-value-field">
+                              <label htmlFor={`condition-value-${condition.id}`}>Value</label>
+                              <input
+                                id={`condition-value-${condition.id}`}
+                                value={condition.value}
+                                onChange={(event) =>
+                                  updateCondition(
+                                    index,
+                                    conditionIndex,
+                                    "value",
+                                    event.target.value
+                                  )
+                                }
+                                placeholder={
+                                  listCondition ? "US, CA" : contextField?.example || "Value"
+                                }
+                                aria-describedby={helpId}
+                                maxLength={256}
+                              />
+                              <small id={helpId}>
+                                {listCondition
+                                  ? "Separate values with commas."
+                                  : `Example: ${contextField?.example || "value"}.`}
+                              </small>
+                            </div>
+                            <button
+                              className="icon-button condition-remove-button"
+                              type="button"
+                              onClick={() => removeCondition(index, conditionIndex)}
+                              aria-label={`Remove condition ${conditionIndex + 1} from segment ${index + 1}`}
+                              title="Remove condition"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <button
+                    className="button button--quiet button--small condition-add-button"
+                    type="button"
+                    onClick={() => addCondition(index)}
+                  >
+                    + Add condition
+                  </button>
+                </fieldset>
+
+                <div className="segment-outcome-grid">
+                  <fieldset className="segment-stage segment-rollout">
+                    <legend>Rollout</legend>
+                    <label className="rollout-toggle" htmlFor={`rollout-enabled-${rule.id}`}>
+                      <input
+                        id={`rollout-enabled-${rule.id}`}
+                        type="checkbox"
+                        checked={rule.rolloutPercentage !== ""}
+                        onChange={(event) =>
+                          updateRule(index, "rolloutPercentage", event.target.checked ? "10" : "")
+                        }
+                      />
+                      <span>Use gradual rollout</span>
+                    </label>
+                    {rule.rolloutPercentage !== "" ? (
+                      <div className="rollout-controls">
+                        <label className="visually-hidden" htmlFor={`rollout-slider-${rule.id}`}>
+                          Rollout percentage slider
+                        </label>
+                        <input
+                          className="rollout-slider"
+                          id={`rollout-slider-${rule.id}`}
+                          type="range"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          value={rule.rolloutPercentage}
+                          onChange={(event) =>
+                            updateRule(index, "rolloutPercentage", event.target.value)
+                          }
+                          aria-valuetext={`${rule.rolloutPercentage}% of matching visitors`}
+                        />
+                        <div className="field-group rollout-number-field">
+                          <label htmlFor={`rollout-value-${rule.id}`}>
+                            Percent of matching visitors
+                          </label>
+                          <div className="rollout-number-input">
+                            <input
+                              id={`rollout-value-${rule.id}`}
+                              type="number"
+                              inputMode="decimal"
+                              min="0"
+                              max="100"
+                              step="0.01"
+                              value={rule.rolloutPercentage}
+                              onChange={(event) =>
+                                updateRule(index, "rolloutPercentage", event.target.value)
+                              }
+                            />
+                            <span aria-hidden="true">%</span>
+                          </div>
+                        </div>
+                        <p className="rollout-help">
+                          The same anonymous browser stays in the same cohort. Visitors outside this
+                          rollout continue to the next segment or default.
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="rollout-help">
+                        Off means every visitor who matches these conditions gets the selected
+                        variant.
+                      </p>
+                    )}
+                  </fieldset>
+
+                  <div className="segment-stage segment-serve">
+                    <label htmlFor={`rule-variant-${rule.id}`}>THEN · Serve variant</label>
+                    <select
+                      id={`rule-variant-${rule.id}`}
+                      value={rule.variant}
+                      onChange={(event) => updateRule(index, "variant", event.target.value)}
+                    >
+                      {definition.variants.map((variant) => (
+                        <option key={`${rule.id}-${variant.id}`} value={variant.key}>
+                          {variant.key || "Unnamed"}
+                          {definition.defaultVariant === variant.key ? " · default" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-                <button
-                  className="icon-button"
-                  type="button"
-                  onClick={() =>
-                    updateDefinition({
-                      rules: definition.rules.filter((_, ruleIndex) => ruleIndex !== index),
-                    })
-                  }
-                  aria-label={`Remove rule ${index + 1}`}
-                >
-                  ×
-                </button>
-              </div>
+              </article>
             ))}
           </div>
         )}
@@ -667,10 +901,10 @@ function DefinitionEditor({ definition, setDefinition, disabled }) {
             ↳
           </span>
           <div>
-            <span>Default variation</span>
-            <strong>{definition.defaultVariant || "Choose a variation"}</strong>
+            <span>DEFAULT VARIANT</span>
+            <strong>{definition.defaultVariant || "Choose a variant"}</strong>
           </div>
-          <p>Used when a visitor falls through every targeting rule.</p>
+          <p>Used when no segment matches, and when the flag is disabled.</p>
         </div>
       </section>
     </fieldset>
@@ -827,16 +1061,18 @@ function SettingsPage({ config }) {
   return (
     <div className="flag-manager">
       <div className="flag-breadcrumb" aria-label="Breadcrumb">
-        <span>Flag management</span>
+        <a href="#/">Shorten URL</a>
+        <span aria-hidden="true">/</span>
+        <span aria-current="page">Flagship</span>
         <span aria-hidden="true">/</span>
         <code>{FLAG_KEY}</code>
       </div>
 
       <header className="flag-manager-header">
         <div className="flag-manager-title">
-          <p className="eyebrow">JSON FEATURE FLAG</p>
+          <p className="eyebrow">FEATURE FLAG</p>
           <h1 id="flag-page-title">{FLAG_KEY}</h1>
-          <p>Country and percentage routing for the protected landing page.</p>
+          <p>Route visitors with audience segments, destination variants, and gradual rollouts.</p>
         </div>
         <div className="flag-state-list" aria-label="Flag state">
           <span className={`state-badge state-badge--${phase}`}>{settingsState}</span>
@@ -848,7 +1084,7 @@ function SettingsPage({ config }) {
           <span
             className={`flag-state-chip ${hasFlag ? "flag-state-chip--saved" : "flag-state-chip--new"}`}
           >
-            {hasFlag ? "SAVED" : "NOT SAVED"}
+            {hasFlag ? "DRAFT SAVED" : "NEW FLAG"}
           </span>
         </div>
       </header>
@@ -865,11 +1101,11 @@ function SettingsPage({ config }) {
           <dd title={config.workerOrigin}>{originHost(config.workerOrigin)}</dd>
         </div>
         <div>
-          <dt>VARIATIONS</dt>
+          <dt>VARIANTS</dt>
           <dd>{definition.variants.length}</dd>
         </div>
         <div>
-          <dt>TARGETING RULES</dt>
+          <dt>SEGMENTS</dt>
           <dd>{definition.rules.length}</dd>
         </div>
       </dl>
@@ -921,39 +1157,73 @@ function SettingsPage({ config }) {
 
 export default function App() {
   const config = useMemo(() => createFrontendConfig(), []);
-  const [activeTab, setActiveTab] = useState("shorten");
-  const [settingsVisited, setSettingsVisited] = useState(false);
+  const currentPage = () =>
+    typeof window !== "undefined" && window.location.hash === "#/flagship" ? "settings" : "shorten";
+  const [activePage, setActivePage] = useState(currentPage);
+  const [settingsVisited, setSettingsVisited] = useState(() => currentPage() === "settings");
 
-  function selectTab(tab) {
-    setActiveTab(tab);
-    if (tab === "settings") setSettingsVisited(true);
-  }
+  useEffect(() => {
+    function handleLocationChange() {
+      const page = currentPage();
+      setActivePage(page);
+      if (page === "settings") setSettingsVisited(true);
+      window.scrollTo(0, 0);
+    }
+
+    window.addEventListener("hashchange", handleLocationChange);
+    return () => window.removeEventListener("hashchange", handleLocationChange);
+  }, []);
 
   return (
     <div className="app-shell">
-      <Header config={config} activeTab={activeTab} onTabChange={selectTab} />
-      <main className={`main-content${activeTab === "settings" ? " main-content--settings" : ""}`}>
+      <main className={`main-content${activePage === "settings" ? " main-content--settings" : ""}`}>
         <section
-          id="shorten-panel"
-          role="tabpanel"
-          aria-labelledby="shorten-tab"
-          hidden={activeTab !== "shorten"}
+          id="shorten-page"
+          aria-labelledby="shorten-page-title"
+          hidden={activePage !== "shorten"}
         >
           <ShortenerPage config={config} />
         </section>
         <section
-          id="settings-panel"
-          role="tabpanel"
-          aria-labelledby="settings-tab"
-          hidden={activeTab !== "settings"}
+          id="flagship-page"
+          aria-labelledby="flag-page-title"
+          hidden={activePage !== "settings"}
         >
           {settingsVisited ? <SettingsPage config={config} /> : null}
         </section>
+        <footer className="app-footer">
+          <nav aria-label="Project links">
+            <a href="https://github.com/dytsou/shorten-url" target="_blank" rel="noreferrer">
+              GitHub
+            </a>
+            <a
+              href="https://github.com/dytsou/shorten-url/blob/main/README.md"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Docs
+            </a>
+            <a
+              href="https://github.com/dytsou/shorten-url/blob/main/docs/api/openapi.yaml"
+              target="_blank"
+              rel="noreferrer"
+            >
+              API
+            </a>
+          </nav>
+          <p>
+            © 2026 dytsou. Licensed under{" "}
+            <a
+              href="https://github.com/dytsou/shorten-url/blob/main/LICENSE"
+              target="_blank"
+              rel="noreferrer"
+            >
+              MIT License
+            </a>
+            .
+          </p>
+        </footer>
       </main>
-      <footer className="footer">
-        <span>SHORTEN.URL / EDGE UTILITY</span>
-        <span>Built for the fast lane.</span>
-      </footer>
     </div>
   );
 }
