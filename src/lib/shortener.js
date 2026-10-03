@@ -5,7 +5,7 @@ import { createResponses } from "./responses.js";
 import { isUrlSafe } from "./safety.js";
 import { isValidCustomSlug, isValidUrl } from "./validate.js";
 
-export function createShortener({ worker, endpoints, kv }) {
+export function createShortener({ worker, endpoints, kv, env }) {
   const responses = createResponses({ worker, endpoints });
   const kvStore = createKvStore({ worker, kv });
   const reservedSlugSet = new Set(worker.reserved_slugs.map((s) => s.toLowerCase()));
@@ -55,7 +55,7 @@ export function createShortener({ worker, endpoints, kv }) {
         return jsonResponse({ status: 404, message: "Invalid API path" }, 404);
       }
 
-      if (requireAccess && !hasPassedAccess(request)) {
+      if (requireAccess && !hasPassedAccess(request, env)) {
         log("warn", "shorten.access_denied", { api: { path: apiPath } });
         return errorResponse("You must use WARP to shorten the URL", 403, request);
       }

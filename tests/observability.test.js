@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { requestFields } from "../src/lib/observability.js";
+import { flagEvaluationFields, requestFields } from "../src/lib/observability.js";
 
 describe("requestFields", () => {
   it.each([
@@ -48,5 +48,73 @@ describe("log", () => {
     );
 
     spy.mockRestore();
+  });
+
+  describe("flagEvaluationFields", () => {
+    it("keeps evaluation telemetry bounded and free of provider payloads", () => {
+      expect(
+        flagEvaluationFields({
+          flagKey: "shorten-routing",
+          outcome: "matched",
+          country: "SG",
+          variant: "sg",
+          version: "v1",
+          durationMs: 2.6,
+          destination: "https://secret.example",
+          raw: { token: "secret" },
+        })
+      ).toEqual({
+        flagship: {
+          key: "shorten-routing",
+          outcome: "matched",
+          country: "SG",
+          variant: "sg",
+          version: "v1",
+        },
+        duration_ms: 3,
+      });
+    });
+
+    it("caps and normalizes provider-controlled fields", () => {
+      expect(
+        flagEvaluationFields({
+          flagKey: "k".repeat(200),
+          outcome: "unexpected",
+          country: "SG",
+          variant: "v".repeat(200),
+          version: "version".repeat(40),
+          fallbackReason: "reason".repeat(40),
+          durationMs: -2.4,
+        })
+      ).toEqual({
+        flagship: {
+          key: "k".repeat(64),
+          outcome: "failed",
+          country: "SG",
+          variant: "v".repeat(64),
+          version: "version".repeat(40).slice(0, 128),
+          fallback_reason: "reason".repeat(40).slice(0, 128),
+        },
+        duration_ms: 0,
+      });
+    });
+
+    it("omits invalid country values and uses safe defaults", () => {
+      expect(
+        flagEvaluationFields({
+          flagKey: { provider: "unexpected" },
+          outcome: "provider_error",
+          country: "not-a-country",
+          variant: "",
+          fallbackReason: "",
+        })
+      ).toEqual({
+        flagship: {
+          key: "shorten-routing",
+          outcome: "failed",
+        },
+        duration_ms: null,
+      });
+    });
   });
 });

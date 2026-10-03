@@ -1,19 +1,20 @@
 /**
- * URL Shortener deployment configuration
+ * URL Shortener Configuration Example
  *
- * Set frontend.url to the public static homepage that the Worker should serve.
- * Keep private credentials out of this tracked file.
+ * Copy this file to config.js and modify the values according to your setup.
+ * This file should be committed to your repository as a template.
+ * The actual config.js file should be added to .gitignore to keep your secrets safe.
  */
 
 const config = {
   // Frontend Configuration
   frontend: {
-    // URL where your frontend is hosted (used by worker to serve the main page)
-    // REQUIRED: Change this to your Cloudflare Pages URL or custom domain
-    url: "https://your-project.pages.dev/",
+    // Leave empty when the Worker serves the React UI. Set this only for
+    // separately hosted legacy error/interstitial pages.
+    url: "",
 
     // Public Worker origin used by frontend/index.html for shortening and
-    // protected settings when the frontend is hosted separately. Keep it in
+    // protected settings APIs when the frontend is hosted separately. Keep it in
     // sync with the HTML meta tag or VITE_WORKER_ORIGIN; leave empty when the
     // Worker serves the page.
     workerOrigin: "",
@@ -125,4 +126,12 @@ const config = {
   },
 };
 
-export default config;
+// Export for use in other files
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = config;
+}
+
+// Make available globally for browser usage
+if (typeof window !== "undefined") {
+  window.APP_CONFIG = config;
+}

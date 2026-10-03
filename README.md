@@ -1,6 +1,6 @@
 # URL Shortener
 
-A URL shortener built with Cloudflare Workers, Cloudflare KV, and a responsive static web interface. The Worker creates short links, stores them in KV, and serves redirects; the `docs/` directory contains the website and OpenAPI reference.
+A URL shortener built with Cloudflare Workers, Cloudflare KV, and a responsive React interface. The Worker serves the product UI and redirects, while `docs/` contains the documentation and OpenAPI reference.
 
 [![Built with Cloudflare](https://workers.cloudflare.com/built-with-cloudflare.svg)](https://cloudflare.com)
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/dytsou/shorten-url)
@@ -10,7 +10,8 @@ A URL shortener built with Cloudflare Workers, Cloudflare KV, and a responsive s
 - **URL Shortening**: Create short links stored in Cloudflare KV and redirect with HTTP 302
 - **Custom Slugs**: Optionally choose a slug using letters, numbers, hyphens, or underscores
 - **Cloudflare Access**: The Worker checks for Cloudflare Access JWT and email headers before creating links
-- **Responsive Design**: Static shortening form supports desktop and mobile screens
+- **Responsive Design**: Worker-hosted React interface supports desktop and mobile screens
+- **Flagship Controls**: Shorten and protected Flagship views share one interface
 - **Unique Links**: Optionally reuse the same short key when the destination URL already exists
 - **URL Safety**: Validate submitted URLs and optionally check redirect destinations with Google Safe Browsing
 - **Copy Support**: Copy shortened URLs with a manual-selection fallback
@@ -21,6 +22,30 @@ A URL shortener built with Cloudflare Workers, Cloudflare KV, and a responsive s
 The Worker does not implement click analytics, per-IP rate limiting, or blocked-domain lists. The similarly named settings in `config/config.js` are not used by the current Worker.
 
 ## Quick Start
+
+### Worker-hosted React frontend
+
+The product UI is React source in `frontend/`, compiled to `frontend/dist`, and served by the Worker through its `ASSETS` binding. Worker routing and APIs remain in `src/`; the separate Cloudflare Pages site publishes documentation from `docs/`. `docs/index.html` is not a product asset.
+
+For a clean local setup, install both declared packages and use the root commands:
+
+```bash
+pnpm install --frozen-lockfile --ignore-scripts
+pnpm --dir frontend install --frozen-lockfile --ignore-scripts
+cp wrangler.toml.example wrangler.toml
+# Set a real LINKS namespace and production-only Access values in wrangler.toml or secrets.
+pnpm build
+pnpm dev
+```
+
+`pnpm dev`, `pnpm preview`, and `pnpm deploy` build `frontend/dist` before running Wrangler. The Worker serves the UI at `GET /`. Only the `production` branch mounts its product page at `/shorten`; other branch previews stay at `/`. Regardless of the page path, the UI sends API requests to `POST /` and `/settings/api/*`. Standalone settings pages are not exposed.
+
+Production must use an Access-protected custom hostname, set `workers_dev = false`, and set `ACCESS_ALLOWED_HOSTS` to that hostname. Keep `CLOUDFLARE_API_TOKEN`, `FLAGSHIP_CSRF_SECRET`, and provider credentials in Cloudflare/GitHub secrets, never Vite metadata or tracked configuration. Optional `FRONTEND_URL` and `FRONTEND_PAGES_BASE` retain legacy error/interstitial pages only; they are not used to serve the normal UI.
+
+The Worker deployment workflow reads the non-secret GitHub variables
+`LINKS_KV_NAMESPACE_ID` and `ACCESS_ALLOWED_HOSTS`, plus the
+`CLOUDFLARE_API_TOKEN` secret, to create its ignored `wrangler.toml` at build
+time.
 
 ### Prerequisites
 
@@ -35,7 +60,7 @@ The Worker does not implement click analytics, per-IP rate limiting, or blocked-
 2. Connect your Cloudflare and GitHub or GitLab accounts, then choose the destination repository and Worker name.
 3. Confirm the `LINKS` KV binding. Cloudflare provisions the namespace and deploys the Worker from the `main` branch.
 
-The button deploys the Worker; it does not publish the static homepage in `docs/`. Connect the created repository to Cloudflare Pages, leave the build command blank, and set the output directory to `docs`. Then set `frontend.url` in `config/config.js` to the Pages URL and push the change to redeploy the Worker. The Worker fetches the static homepage and serves it at `/`, so the form submits to `POST /` on the Worker.
+The button deploys the Worker; it does not publish `docs/`. Connect the created repository to Cloudflare Pages, leave the build command blank, and set the output directory to `docs`. The React product UI is built into `frontend/dist` and served by the Worker through `ASSETS`; use the Worker deployment workflow or `pnpm deploy` to build and deploy those assets.
 
 ### 2. Alternative: Manual Worker Deployment
 
@@ -48,33 +73,25 @@ corepack enable
 pnpm install
 ```
 
-Set `frontend.url` in `config/config.js` to the public URL where you host `docs/`. The Worker fetches this page for `GET /`:
-
-```javascript
-const config = {
-  frontend: {
-    url: "https://your-project.pages.dev/",
-  },
-  // Configure worker options here
-};
-```
-
-`src/worker.js` imports `config/config.js` directly. Keep API keys out of this file; configure the optional Google Safe Browsing key with a Wrangler secret.
-
-Install Wrangler, log in, and deploy:
+The Worker serves the product UI from `ASSETS`. To deploy manually, install both packages, create the local Wrangler file from the tracked example, set the `LINKS` namespace ID and Access hostname, then build and deploy:
 
 ```bash
+pnpm install --frozen-lockfile --ignore-scripts
+pnpm --dir frontend install --frozen-lockfile --ignore-scripts
+cp wrangler.toml.example wrangler.toml
+# Set the LINKS namespace ID and ACCESS_ALLOWED_HOSTS.
+pnpm build
 pnpm exec wrangler login
 pnpm deploy
 ```
 
 The `LINKS` binding in `wrangler.toml` omits an account-specific namespace ID so Wrangler can provision it. To use an existing KV namespace, create it with `pnpm exec wrangler kv namespace create LINKS` and set its ID in `wrangler.toml` before deploying.
 
-### 3. Deploy the Frontend to Cloudflare Pages
+### 3. Deploy Documentation to Cloudflare Pages
 
-The `main` branch includes a sample page at `docs/index.html`. To create your own Pages site, connect your repository to Cloudflare Pages, set the production branch to the branch containing your homepage, leave the build command blank, and use `docs` as the output directory.
+The `docs/` directory contains the API reference and documentation. To create a Pages site, connect your repository, set the production branch to the branch containing your documentation, leave the build command blank, and use `docs` as the output directory.
 
-This repository's Cloudflare Pages project publishes `docs/` from the `production` branch. The `main` branch remains the one-click Worker template. Set `frontend.url` to your Pages URL so the Worker can serve the hosted homepage at `/`.
+This repository's Cloudflare Pages project publishes `docs/` from the `production` branch. The product UI is served by the Worker and does not depend on the Pages site.
 
 For custom error and interstitial pages, set `frontend.pagesBase` to the directory containing those files.
 
@@ -84,12 +101,13 @@ The Worker returns short URLs using the request's origin, so configure its publi
 
 ### Frontend Configuration
 
-| Option                | Description                                                                 | Default  |
-| --------------------- | --------------------------------------------------------------------------- | -------- |
-| `frontend.url`        | Static homepage URL fetched by the Worker for `GET /`                      | Required |
-| `frontend.pagesBase`  | Base URL for hosted error and interstitial pages                            | `url`    |
-
-The `frontend.displayDomain` and `frontend.theme` values in the configuration are not read by the current static page or Worker.
+| Option                   | Description                                             | Default |
+| ------------------------ | ------------------------------------------------------- | ------- |
+| `frontend.url`           | Optional origin for legacy error and interstitial pages | `""`    |
+| `frontend.pagesBase`     | Base URL for hosted error and interstitial pages        | `url`   |
+| `frontend.workerOrigin`  | Public Worker origin for a separately hosted frontend   | `""`    |
+| `frontend.displayDomain` | Domain shown in UI (null = auto-detect)                 | `null`  |
+| `frontend.theme`         | UI theme selection                                      | `""`    |
 
 ### Worker Configuration
 
@@ -99,7 +117,7 @@ The `frontend.displayDomain` and `frontend.theme` values in the configuration ar
 | `worker.cors`                   | Add wildcard CORS headers for API responses                     | `"on"`     |
 | `worker.unique_link`            | Reuse a key when the same URL has already been shortened        | `true`     |
 | `worker.custom_link`            | Allow custom slugs                                              | `true`     |
-| `SAFE_BROWSING_API_KEY`         | Optional Google Safe Browsing API key stored as a Worker secret  | Unset      |
+| `SAFE_BROWSING_API_KEY`         | Optional Google Safe Browsing API key stored as a Worker secret | Unset      |
 | `worker.min_random_key_length`  | Minimum length for generated keys                               | `6`        |
 | `worker.random_chars`           | Characters used for generated keys                              | See config |
 | `worker.max_custom_slug_length` | Maximum length for custom slugs                                 | `50`       |
@@ -107,12 +125,12 @@ The `frontend.displayDomain` and `frontend.theme` values in the configuration ar
 
 ### Security Configuration
 
-| Option                                | Description                                                          | Default |
-| ------------------------------------- | -------------------------------------------------------------------- | ------- |
-| `security.rate_limit`                | Not implemented by the Worker                                        | Unused  |
-| `security.validate_urls`             | URLs are always validated; this setting does not toggle validation  | Unused  |
-| `security.blocked_domains`           | Domain blocklists are not implemented by the Worker                 | Unused  |
-| `security.block_suspicious_domains`  | Domain blocklists are not implemented by the Worker                 | Unused  |
+| Option                              | Description                                                        | Default |
+| ----------------------------------- | ------------------------------------------------------------------ | ------- |
+| `security.rate_limit`               | Not implemented by the Worker                                      | Unused  |
+| `security.validate_urls`            | URLs are always validated; this setting does not toggle validation | Unused  |
+| `security.blocked_domains`          | Domain blocklists are not implemented by the Worker                | Unused  |
+| `security.block_suspicious_domains` | Domain blocklists are not implemented by the Worker                | Unused  |
 
 ### Storage Configuration
 
@@ -124,9 +142,9 @@ The `frontend.displayDomain` and `frontend.theme` values in the configuration ar
 
 ### Custom Domain
 
-1. Add a custom domain to the Cloudflare Pages project for the static site.
-2. Add a domain to the Cloudflare Worker separately for the shortening API.
-3. Set `frontend.url` to the Cloudflare Pages URL; Pages and Worker domains are configured independently.
+1. Add a custom domain to the Cloudflare Worker and protect it with Cloudflare Access.
+2. Add a custom domain to the Cloudflare Pages project for documentation.
+3. Set `frontend.url` only when using separately hosted legacy error or interstitial pages.
 
 ### Google Safe Browsing
 
@@ -162,7 +180,7 @@ The API reference is a static Swagger UI published from `docs/api/`; it is not s
 
 - **Format**: OpenAPI 3.1.0
 - **Location**: [docs/api/openapi.yaml](docs/api/openapi.yaml)
-- **Interactive UI**: [docs/api/index.html](docs/api/index.html), published at `/api/` under the Pages base URL
+- **Interactive UI**: [docs/api/index.html](docs/api/index.html), published at `/api/` from the Pages site root
 - **Offline Access**: [docs/api/index.html](docs/api/index.html) for local viewing
 
 ### Shorten URL
@@ -176,7 +194,7 @@ The API reference is a static Swagger UI published from `docs/api/`; it is not s
 }
 ```
 
-`custom_slug` is optional. The default Worker template requires Cloudflare Access headers before creating a link.
+The endpoint stays at the origin root even when the production page is mounted at `/shorten`. `custom_slug` is optional. The default Worker template requires Cloudflare Access headers before creating a link.
 
 **Response (201 Created):**
 
@@ -203,8 +221,22 @@ Redirects to the stored destination with HTTP 302. Query parameters from the sho
 
 ### Additional Endpoints
 
-- **GET** `/` - Fetches the configured static homepage
+- **GET** `/` - Serves the Worker-hosted React interface
 - **OPTIONS** - Returns a CORS preflight response
+
+### Flagship Management API
+
+The authenticated control plane manages the `shorten-routing` flag under `/settings/api`. Requests require Cloudflare Access authentication. Fetch a CSRF token before sending a write; POST and PUT requests must include that token in `X-CSRF-Token`, use `application/json`, and come from the same origin as the UI.
+
+| Method | Path                                         | Purpose                                                   |
+| ------ | -------------------------------------------- | --------------------------------------------------------- |
+| `GET`  | `/settings/api/csrf`                         | Get a CSRF token for the signed-in Access user and origin |
+| `GET`  | `/settings/api/flags`                        | Read the saved shortening flag                            |
+| `POST` | `/settings/api/flag`                         | Create the `shorten-routing` flag                         |
+| `PUT`  | `/settings/api/flag/shorten-routing`         | Save a draft with `expectedUpdatedAt` concurrency control |
+| `POST` | `/settings/api/flag/shorten-routing/publish` | Publish the saved version                                 |
+
+Targeting rules are evaluated by ascending priority. Conditions in a rule are combined with AND and can target country, region, continent, timezone, browser language, or UTM source, medium, and campaign. Supported operators are `equals`, `not_equals`, `contains`, `starts_with`, `ends_with`, `in`, and `not_in`. A rule can also set `rolloutPercentage` from 0 to 100; the Worker uses a stable visitor key for the canary assignment. See the OpenAPI schema for request and response shapes.
 
 ## 🛠️ Development
 
@@ -223,23 +255,26 @@ curl -X POST http://localhost:8787/ \
   -d '{"url": "https://example.com"}'
 ```
 
-The Worker imports `config/config.js` directly. Run `pnpm test` to execute the Worker tests.
+The Worker combines built-in defaults with non-secret Wrangler variables; keep credentials in Wrangler secrets. Run `pnpm test` to execute the Worker tests.
 
 ### File Structure
 
 ```
 shorten-url/
 ├── src/
-│   ├── lib/                 # Validation, redirects, KV, responses, and observability
-│   └── worker.js            # Worker entrypoint
+│   ├── lib/                 # Validation, routes, KV, assets, and observability
+│   ├── worker.js            # Production Worker entrypoint
+│   └── worker.example.js    # Example Worker entrypoint
+├── frontend/               # React product UI and build configuration
 ├── docs/
-│   ├── index.html          # Sample homepage (POST /)
+│   ├── index.html          # Documentation site homepage
 │   └── api/
 │       ├── index.html      # Swagger UI for API docs
 │       └── openapi.yaml    # OpenAPI 3.1.0 specification
 ├── config/
-│   └── config.js            # Worker configuration
-├── wrangler.toml            # Wrangler configuration
+│   ├── config.js            # Existing deployment template
+│   └── config.example.js    # Configuration example
+├── wrangler.toml.example    # Wrangler deployment template
 ├── .github/                # GitHub workflows and templates
 ├── .gitignore              # Ignores local-only files
 └── README.md               # This file
@@ -264,7 +299,8 @@ shorten-url/
 
 **Worker deployment fails:**
 
-- Confirm `src/worker.js` and `config/config.js` are present
+- Confirm `src/worker.js`, `wrangler.toml.example`, and `frontend/` are present
+- Build the frontend so `frontend/dist/index.html` exists
 - Ensure the `LINKS` KV namespace ID in `wrangler.toml` is valid
 - Ensure KV namespace ID is correct
 - Verify you're logged into the correct Cloudflare account
@@ -277,8 +313,8 @@ shorten-url/
 
 **Frontend not loading:**
 
-- Set `frontend.url` to the hosted static homepage URL
-- If the form returns an invalid-path response, check that its POST path matches the Worker route (`/` for the template)
+- Check that the Worker has an `ASSETS` binding and `frontend/dist/index.html` was built
+- If shortening returns an invalid-path response, check that the frontend POST path is `/`
 - Enable CORS if the frontend and Worker use different origins
 
 **Rate limiting issues:**
@@ -307,7 +343,8 @@ If you encounter any issues or have questions:
 
 ## Deployment Checklist
 
-- [ ] Set `frontend.url` and the `LINKS` KV namespace in the deployment configuration
+- [ ] Set `LINKS_KV_NAMESPACE_ID` and `ACCESS_ALLOWED_HOSTS` for Worker deployment
+- [ ] Build the React frontend into `frontend/dist`
 - [ ] Deployed `docs/` to Cloudflare Pages
 - [ ] Created Cloudflare KV namespace
 - [ ] Configured `wrangler.toml` with correct KV namespace ID
