@@ -1,0 +1,269 @@
+import { log } from "./observability.js";
+import {
+  SHORTENING_FLAG_KEY,
+  FLAGSHIP_CONTEXT_ATTRIBUTES,
+  fromProviderFlag,
+  normalizeCountry,
+  toProviderFlag,
+  validateFlagDefinition,
+} from "./feature-toggle.js";
+import { isSafeDestination } from "./safety.js";
+
+export class FlagshipUnavailableError extends Error {
+  constructor(message = "Flagship is not configured") {
+    super(message);
+    this.name = "FlagshipUnavailableError";
+  }
+}
+
+export class FlagshipManagementError extends Error {
+  constructor(message, status = 502) {
+    super(message);
+    this.name = "FlagshipManagementError";
+    this.status = status;
+  }
+}
+
+/**
+ * Typed boundary for the first-party Cloudflare Flagship binding.
+ *
+ * @typedef {object} FlagshipBinding
+ * @property {(key: string, fallback: object, context?: Record<string, string>) => Promise<object>} getObjectDetails
+ *
+ * @typedef {object} FlagshipEnvironment
+ * @property {FlagshipBinding} [FLAGS] Official Cloudflare Flagship evaluation binding.
+ * @property {string} [CLOUDFLARE_ACCOUNT_ID] Account identifier for management calls.
+ * @property {string} [FLAGSHIP_APP_ID] Flagship app identifier for management calls.
+ * @property {string} [FLAGSHIP_API_TOKEN] Secret token for management calls.
+ * @property {string} [FLAGSHIP_CSRF_SECRET] Secret used for settings CSRF tokens.
+ */
+
+function getBinding(env) {
+  const binding = env?.FLAGS;
+  return binding && typeof binding.getObjectDetails === "function" ? binding : null;
+}
+
+const SUPPORTED_PROVIDER_REASONS = new Set(["TARGETING_MATCH", "SPLIT", "DEFAULT", "DISABLED"]);
+const DEFAULT_PROVIDER_REASONS = new Set(["DEFAULT", "DISABLED"]);
+
+function failedProviderDecision(country, fallbackReason, durationMs) {
+  return { outcome: "failed", country, fallbackReason, durationMs };
+}
+
+function unmatchedProviderDecision(country, fallbackReason, durationMs) {
+  return { outcome: "unmatched", country, fallbackReason, durationMs };
+}
+
+function hasValidProviderDestination(details) {
+  const destination = details.value?.url;
+  return Boolean(
+    destination && isSafeDestination(destination) && typeof details.variant === "string"
+  );
+}
+
+function matchedProviderDecision(details, country, durationMs) {
+  return {
+    outcome: "matched",
+    country,
+    variant: details.variant,
+    destination: details.value.url,
+    flagKey: details.flagKey || SHORTENING_FLAG_KEY,
+    ...(details.version ? { version: details.version } : {}),
+    durationMs,
+  };
+}
+
+function defaultFallbackReason(reason, country) {
+  if (reason === "DISABLED") return "disabled_default_missing";
+  if (country) return "no_match";
+  return "missing_country";
+}
+
+function runtimeDecision(details, country, durationMs) {
+  const normalizedCountry = normalizeCountry(country);
+  if (!details || typeof details !== "object") {
+    return failedProviderDecision(normalizedCountry, "malformed_provider_response", durationMs);
+  }
+  if (details.errorCode) {
+    return failedProviderDecision(normalizedCountry, "provider_error", durationMs);
+  }
+  const reason = details.reason;
+  if (!SUPPORTED_PROVIDER_REASONS.has(reason)) {
+    return failedProviderDecision(normalizedCountry, "malformed_provider_response", durationMs);
+  }
+  if (DEFAULT_PROVIDER_REASONS.has(reason)) {
+    if (hasValidProviderDestination(details)) {
+      return matchedProviderDecision(details, normalizedCountry, durationMs);
+    }
+    return unmatchedProviderDecision(
+      normalizedCountry,
+      defaultFallbackReason(reason, normalizedCountry),
+      durationMs
+    );
+  }
+  if (!hasValidProviderDestination(details)) {
+    return unmatchedProviderDecision(normalizedCountry, "invalid_provider_value", durationMs);
+  }
+  return matchedProviderDecision(details, normalizedCountry, durationMs);
+}
+
+function providerBase(env) {
+  const accountId = env?.CLOUDFLARE_ACCOUNT_ID;
+  const appId = env?.FLAGSHIP_APP_ID;
+  const token = env?.FLAGSHIP_API_TOKEN;
+  if (!accountId || !appId || !token) throw new FlagshipUnavailableError();
+  return {
+    token,
+    url:
+      env.FLAGSHIP_API_BASE_URL ||
+      `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/flagship/apps/${encodeURIComponent(appId)}/flags`,
+  };
+}
+
+export function createFlagshipAdapter(
+  env,
+  { fetchImpl = globalThis.fetch, now = () => Date.now(), evaluationTimeoutMs = 200 } = {}
+) {
+  async function evaluate(
+    country,
+    { targetingKey, context: requestContext, flagKey = SHORTENING_FLAG_KEY } = {}
+  ) {
+    const started = now();
+    const binding = getBinding(env);
+    const normalizedCountry = normalizeCountry(country);
+    if (!binding) {
+      return runtimeDecision(null, country, now() - started);
+    }
+    let timeoutId;
+    try {
+      const providedContext = {};
+      for (const attribute of FLAGSHIP_CONTEXT_ATTRIBUTES) {
+        if (attribute === "country") continue;
+        const value = requestContext?.[attribute];
+        if (typeof value === "string" && value.trim()) {
+          providedContext[attribute] = value.trim();
+        }
+      }
+      const context = {
+        ...(normalizedCountry ? { country: normalizedCountry } : {}),
+        ...providedContext,
+        ...(typeof targetingKey === "string" && targetingKey ? { targetingKey } : {}),
+      };
+      const details = await Promise.race([
+        binding.getObjectDetails(
+          flagKey,
+          { url: null },
+          Object.keys(context).length ? context : undefined
+        ),
+        new Promise(
+          (_, reject) =>
+            (timeoutId = setTimeout(
+              () => reject(new Error("Flagship evaluation timed out")),
+              evaluationTimeoutMs
+            ))
+        ),
+      ]);
+      return runtimeDecision(details, country, now() - started);
+    } catch (error) {
+      const fallbackReason = error?.message?.includes("timed out") ? "timeout" : "provider_error";
+      log("warn", "flagship.evaluate_failed", { fallback_reason: fallbackReason });
+      return {
+        outcome: "failed",
+        country: normalizedCountry,
+        fallbackReason,
+        durationMs: now() - started,
+      };
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  async function managementRequest(path = "", options = {}) {
+    const { token, url } = providerBase(env);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2000);
+    let response;
+    try {
+      response = await fetchImpl(`${url}${path}`, {
+        ...options,
+        signal: controller.signal,
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+          ...options.headers,
+        },
+      });
+    } catch {
+      throw new FlagshipManagementError("Flagship management request failed", 502);
+    } finally {
+      clearTimeout(timeout);
+    }
+    let body = null;
+    try {
+      body = await response.json();
+    } catch {
+      // Treat a non-JSON provider response as an unavailable provider.
+    }
+    if (!response.ok || !body?.success) {
+      throw new FlagshipManagementError(
+        "Flagship management request failed",
+        response.status || 502
+      );
+    }
+    return body.result;
+  }
+
+  async function listFlags() {
+    return managementRequest();
+  }
+
+  async function getFlag(key = SHORTENING_FLAG_KEY) {
+    return managementRequest(`/${encodeURIComponent(key)}`);
+  }
+
+  async function saveFlag(definition, { key = definition?.key, expectedUpdatedAt } = {}) {
+    const validated = validateFlagDefinition(definition);
+    if (!validated.ok) {
+      throw new FlagshipManagementError(validated.errors.join("; "), 400);
+    }
+    if (expectedUpdatedAt !== undefined) {
+      const current = await getFlag(key);
+      if (current?.updated_at !== expectedUpdatedAt) {
+        throw new FlagshipManagementError("Flag definition changed; reload before saving", 409);
+      }
+    }
+    const providerFlag = toProviderFlag(validated.value);
+    return managementRequest(`/${encodeURIComponent(key)}`, {
+      method: "PUT",
+      body: JSON.stringify(providerFlag),
+    });
+  }
+
+  async function createFlag(definition) {
+    const validated = validateFlagDefinition(definition);
+    if (!validated.ok) throw new FlagshipManagementError(validated.errors.join("; "), 400);
+    return managementRequest("", {
+      method: "POST",
+      body: JSON.stringify(toProviderFlag(validated.value)),
+    });
+  }
+
+  async function publishFlag(definition, expectedUpdatedAt) {
+    const validated = validateFlagDefinition({ ...definition, enabled: true });
+    if (!validated.ok) throw new FlagshipManagementError(validated.errors.join("; "), 400);
+    return saveFlag(validated.value, { expectedUpdatedAt });
+  }
+
+  return {
+    evaluate,
+    listFlags,
+    getFlag,
+    saveFlag,
+    createFlag,
+    publishFlag,
+    normalizeProviderFlag: fromProviderFlag,
+  };
+}
+
+export { runtimeDecision };

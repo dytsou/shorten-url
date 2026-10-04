@@ -1,6 +1,8 @@
 name = "shorten-url"
 main = "src/worker.js"
 compatibility_date = "2026-09-27"
+# Production must bind this Worker to an Access-protected custom hostname.
+# Keep the default workers.dev hostname disabled in the production deployment.
 workers_dev = false
 
 [assets]
@@ -11,6 +13,7 @@ not_found_handling = "none"
 
 [[kv_namespaces]]
 binding = "LINKS"
+id = "your-kv-namespace-id"
 
 # Provision a Flagship app, replace the placeholder, and uncomment this block
 # before enabling country-targeted shortening. Without it the Worker safely
@@ -34,6 +37,7 @@ head_sampling_rate = 1
 # FLAGSHIP_APP_ID = "REPLACE_WITH_FLAGSHIP_APP_ID"
 # CF_ACCESS_ISSUER = "https://YOURTEAM.cloudflareaccess.com"
 # CF_ACCESS_AUDIENCE = "REPLACE_WITH_ACCESS_AUDIENCE"
+# ACCESS_ALLOWED_HOSTS = "short.example.com"
 
 [observability.traces]
 enabled = true
