@@ -39,6 +39,7 @@ function createHandler(options = {}) {
     flagshipAdapter: options.flagshipAdapter || {
       evaluate: vi.fn().mockResolvedValue({ outcome: "unmatched" }),
     },
+    configOverrides: options.configOverrides,
     verifyToken: options.verifyToken,
   });
 }
@@ -54,6 +55,45 @@ describe("Worker-hosted frontend assets", () => {
     expect(await response.text()).toContain("worker shell");
     expect(assets.fetch).toHaveBeenCalledTimes(1);
     expect(new URL(assets.calls[0].url).pathname).toBe("/");
+  });
+
+  it("mounts the product at its configured path and serves docs from the root", async () => {
+    const assets = createAssets();
+    const pagesFetch = vi.fn().mockImplementation(async () => new Response("documentation"));
+    vi.stubGlobal("fetch", pagesFetch);
+    const flagshipAdapter = {
+      evaluate: vi.fn().mockResolvedValue({ outcome: "unmatched" }),
+    };
+    const worker = createHandler({
+      configOverrides: {
+        frontend: {
+          homePath: "/shorten",
+          url: "https://docs.example/",
+          pagesBase: "https://docs.example/",
+        },
+      },
+      flagshipAdapter,
+    });
+    const environment = createEnvironment(assets);
+
+    const homepage = await worker(request("/"), environment);
+    expect(await homepage.text()).toBe("documentation");
+    expect(new URL(pagesFetch.mock.calls[0][0].url).pathname).toBe("/");
+
+    const apiDocs = await worker(request("/api/"), environment);
+    expect(await apiDocs.text()).toBe("documentation");
+    expect(new URL(pagesFetch.mock.calls[1][0].url).pathname).toBe("/api/");
+
+    const product = await worker(
+      request("/shorten", { headers: mockedAccessHeaders() }),
+      environment
+    );
+    expect(product.status).toBe(200);
+    expect(await product.text()).toContain("worker shell");
+    expect(new URL(assets.calls[0].url).pathname).toBe("/");
+    expect(assets.fetch).toHaveBeenCalledTimes(1);
+    expect(pagesFetch).toHaveBeenCalledTimes(2);
+    expect(flagshipAdapter.evaluate).toHaveBeenCalledTimes(1);
   });
 
   it("removes settings page routes while keeping settings APIs protected", async () => {

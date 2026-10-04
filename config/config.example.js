@@ -9,6 +9,10 @@
 const config = {
   // Frontend Configuration
   frontend: {
+    // Path that serves the product UI. Main and local previews use the root;
+    // production can mount it at /shorten while leaving APIs at the root.
+    homePath: "/",
+
     // Leave empty when the Worker serves the React UI. Set this only for
     // separately hosted legacy error/interstitial pages.
     url: "",

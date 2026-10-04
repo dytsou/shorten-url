@@ -8,9 +8,11 @@
 const config = {
   // Frontend Configuration
   frontend: {
-    // URL where your frontend is hosted (used by worker to serve the main page)
-    // REQUIRED: Change this to your Cloudflare Pages URL or custom domain
+    // Cloudflare Pages URL used for the public docs homepage and /api reference.
     url: "https://shorten-url-13j.pages.dev/",
+    pagesBase: "https://shorten-url-13j.pages.dev/",
+    // Production serves the product UI here; the API stays at POST /.
+    homePath: "/shorten",
 
     // Domain displayed in the custom slug input prefix
     // If null, will use the current domain automatically

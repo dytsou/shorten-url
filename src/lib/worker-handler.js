@@ -5,6 +5,21 @@ import { endpointsFromFrontend } from "./endpoints.js";
 import { createShortener } from "./shortener.js";
 import { createRuntimeConfig } from "./runtime-config.js";
 
+async function fetchDocumentation(request, requestURL, frontend) {
+  const pagesBase = frontend.pagesBase || frontend.url;
+  if (!pagesBase) {
+    return new Response("Documentation pages are unavailable", { status: 503 });
+  }
+
+  try {
+    const documentURL = new URL(requestURL.pathname, pagesBase);
+    documentURL.search = requestURL.search;
+    return await fetch(new Request(documentURL, { method: request.method }));
+  } catch {
+    return new Response("Documentation pages are unavailable", { status: 503 });
+  }
+}
+
 /**
  * Compose the shared Worker request handler.
  *
@@ -21,6 +36,7 @@ export function createWorkerHandler({
     const config = fixedConfig || createRuntimeConfig(env, configOverrides);
     const requestURL = new URL(request.url);
     const endpoints = endpointsFromFrontend(config.frontend);
+    const homePath = config.frontend.homePath || "/";
     const shortener = createShortener({
       worker: {
         ...config.worker,
@@ -32,8 +48,8 @@ export function createWorkerHandler({
     });
     const flagRoutes = createFlagRoutes({
       prefix: "/settings",
-      shorteningPath: "/",
-      pageUrl: endpoints.shortenPage,
+      shorteningPath: homePath,
+      pageUrl: new URL(homePath, requestURL.origin).href,
       shortener,
       env,
       adapter: flagshipAdapter || createFlagshipAdapter(env),
@@ -54,11 +70,24 @@ export function createWorkerHandler({
         allowedApiPaths: ["/", "/shorten"],
       });
     }
+    if (
+      homePath !== "/" &&
+      (request.method === "GET" || request.method === "HEAD") &&
+      (requestURL.pathname === "/api" || requestURL.pathname.startsWith("/api/"))
+    ) {
+      if (requestURL.pathname === "/api") {
+        return Response.redirect(new URL(`/api/${requestURL.search}`, requestURL), 308);
+      }
+      return fetchDocumentation(request, requestURL, config.frontend);
+    }
     const variantResponse = await flagRoutes.evaluateShortening(request, requestURL.pathname, () =>
       fetchFrontendAsset(env, request, "/")
     );
     if (variantResponse) return variantResponse;
-    if (requestURL.pathname === "/") return fetchFrontendAsset(env, request, "/");
+    if (requestURL.pathname === homePath) return fetchFrontendAsset(env, request, "/");
+    if (requestURL.pathname === "/" && homePath !== "/") {
+      return fetchDocumentation(request, requestURL, config.frontend);
+    }
     if (requestURL.pathname === "/favicon.ico") {
       return Response.redirect(new URL("/favicon.svg", request.url), 302);
     }

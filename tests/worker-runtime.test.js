@@ -11,10 +11,15 @@ describe("tracked Worker runtime", () => {
   });
 
   it("does not let one request mutate the default runtime configuration", () => {
-    const configured = createRuntimeConfig({ FRONTEND_URL: "https://configured.example/" });
+    const configured = createRuntimeConfig({
+      FRONTEND_URL: "https://configured.example/",
+      FRONTEND_HOME_PATH: "/shorten",
+    });
     const fresh = createRuntimeConfig();
 
     expect(configured.frontend.url).toBe("https://configured.example/");
+    expect(configured.frontend.homePath).toBe("/shorten");
     expect(fresh.frontend.url).toBe("");
+    expect(fresh.frontend.homePath).toBe("/");
   });
 });

@@ -2,6 +2,7 @@ const DEFAULT_FRONTEND = {
   url: "",
   pagesBase: "",
   workerOrigin: "",
+  homePath: "/",
   displayDomain: null,
   theme: "",
 };
@@ -80,6 +81,7 @@ export function createRuntimeConfig(env = {}, overrides = {}) {
     config.frontend.pagesBase || config.frontend.url
   );
   config.frontend.workerOrigin = envValue(env, "WORKER_ORIGIN", config.frontend.workerOrigin);
+  config.frontend.homePath = envValue(env, "FRONTEND_HOME_PATH", config.frontend.homePath);
   config.worker.cors = envValue(env, "WORKER_CORS", config.worker.cors);
   config.worker.no_ref = envValue(env, "WORKER_NO_REF", config.worker.no_ref);
   config.flagship.app_id = envValue(env, "FLAGSHIP_APP_ID", config.flagship.app_id);
