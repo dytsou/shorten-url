@@ -43,81 +43,68 @@ function getBinding(env) {
   return binding && typeof binding.getObjectDetails === "function" ? binding : null;
 }
 
-function runtimeDecision(details, country, durationMs) {
-  const normalizedCountry = normalizeCountry(country);
-  if (!details || typeof details !== "object") {
-    return {
-      outcome: "failed",
-      country: normalizedCountry,
-      fallbackReason: "malformed_provider_response",
-      durationMs,
-    };
-  }
-  if (details.errorCode) {
-    return {
-      outcome: "failed",
-      country: normalizedCountry,
-      fallbackReason: "provider_error",
-      durationMs,
-    };
-  }
-  const reason = details.reason;
-  if (!["TARGETING_MATCH", "SPLIT", "DEFAULT", "DISABLED"].includes(reason)) {
-    return {
-      outcome: "failed",
-      country: normalizedCountry,
-      fallbackReason: "malformed_provider_response",
-      durationMs,
-    };
-  }
-  if (reason === "DEFAULT" || reason === "DISABLED") {
-    const destination = details.value?.url;
-    if (destination && isSafeDestination(destination) && typeof details.variant === "string") {
-      return {
-        outcome: "matched",
-        country: normalizedCountry,
-        variant: details.variant,
-        destination,
-        flagKey: details.flagKey || SHORTENING_FLAG_KEY,
-        ...(details.version ? { version: details.version } : {}),
-        durationMs,
-      };
-    }
-    return {
-      outcome: "unmatched",
-      country: normalizedCountry,
-      fallbackReason:
-        reason === "DISABLED"
-          ? "disabled_default_missing"
-          : normalizedCountry
-            ? "no_match"
-            : "missing_country",
-      durationMs,
-    };
-  }
+const SUPPORTED_PROVIDER_REASONS = new Set(["TARGETING_MATCH", "SPLIT", "DEFAULT", "DISABLED"]);
+const DEFAULT_PROVIDER_REASONS = new Set(["DEFAULT", "DISABLED"]);
+
+function failedProviderDecision(country, fallbackReason, durationMs) {
+  return { outcome: "failed", country, fallbackReason, durationMs };
+}
+
+function unmatchedProviderDecision(country, fallbackReason, durationMs) {
+  return { outcome: "unmatched", country, fallbackReason, durationMs };
+}
+
+function hasValidProviderDestination(details) {
   const destination = details.value?.url;
-  if (
-    !destination ||
-    !isSafeDestination(destination) ||
-    typeof details.variant !== "string" ||
-    !["TARGETING_MATCH", "SPLIT"].includes(reason)
-  ) {
-    return {
-      outcome: "unmatched",
-      country: normalizedCountry,
-      fallbackReason: "invalid_provider_value",
-      durationMs,
-    };
-  }
+  return Boolean(
+    destination && isSafeDestination(destination) && typeof details.variant === "string"
+  );
+}
+
+function matchedProviderDecision(details, country, durationMs) {
   return {
     outcome: "matched",
-    country: normalizedCountry,
+    country,
     variant: details.variant,
-    destination,
+    destination: details.value.url,
     flagKey: details.flagKey || SHORTENING_FLAG_KEY,
     ...(details.version ? { version: details.version } : {}),
     durationMs,
   };
+}
+
+function defaultFallbackReason(reason, country) {
+  if (reason === "DISABLED") return "disabled_default_missing";
+  if (country) return "no_match";
+  return "missing_country";
+}
+
+function runtimeDecision(details, country, durationMs) {
+  const normalizedCountry = normalizeCountry(country);
+  if (!details || typeof details !== "object") {
+    return failedProviderDecision(normalizedCountry, "malformed_provider_response", durationMs);
+  }
+  if (details.errorCode) {
+    return failedProviderDecision(normalizedCountry, "provider_error", durationMs);
+  }
+  const reason = details.reason;
+  if (!SUPPORTED_PROVIDER_REASONS.has(reason)) {
+    return failedProviderDecision(normalizedCountry, "malformed_provider_response", durationMs);
+  }
+  if (DEFAULT_PROVIDER_REASONS.has(reason)) {
+    if (hasValidProviderDestination(details)) {
+      return matchedProviderDecision(details, normalizedCountry, durationMs);
+    }
+    return unmatchedProviderDecision(
+      normalizedCountry,
+      defaultFallbackReason(reason, normalizedCountry),
+      durationMs
+    );
+  }
+  if (!hasValidProviderDestination(details)) {
+    return unmatchedProviderDecision(normalizedCountry, "invalid_provider_value", durationMs);
+  }
+  return matchedProviderDecision(details, normalizedCountry, durationMs);
 }
 
 function providerBase(env) {
