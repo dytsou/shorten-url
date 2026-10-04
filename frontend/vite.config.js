@@ -10,16 +10,19 @@ function siteDocsAssets() {
     name: "site-docs-assets",
     apply: "build",
     async generateBundle() {
-      const [aboutTemplate, aboutMarkdown, apiIndexHtml, openApiSpec] = await Promise.all([
-        readFile(new URL("about-template.html", import.meta.url), "utf8"),
-        readFile(new URL("about.md", docsDirectory), "utf8"),
-        readFile(new URL("api/index.html", docsDirectory), "utf8"),
-        readFile(new URL("api/openapi.yaml", docsDirectory), "utf8"),
-      ]);
+      const [docsIndexHtml, aboutTemplate, aboutMarkdown, apiIndexHtml, openApiSpec] =
+        await Promise.all([
+          readFile(new URL("index.html", docsDirectory), "utf8"),
+          readFile(new URL("about-template.html", import.meta.url), "utf8"),
+          readFile(new URL("about.md", docsDirectory), "utf8"),
+          readFile(new URL("api/index.html", docsDirectory), "utf8"),
+          readFile(new URL("api/openapi.yaml", docsDirectory), "utf8"),
+        ]);
 
       const projectGuide = aboutMarkdown.replace(/^# URL Shortener$/m, "## URL Shortener");
       const aboutHtml = aboutTemplate.replace("<!-- ABOUT_CONTENT -->", marked.parse(projectGuide));
 
+      this.emitFile({ type: "asset", fileName: "docs/index.html", source: docsIndexHtml });
       this.emitFile({ type: "asset", fileName: "about.html", source: aboutHtml });
       this.emitFile({ type: "asset", fileName: "api/index.html", source: apiIndexHtml });
       this.emitFile({ type: "asset", fileName: "api/openapi.yaml", source: openApiSpec });

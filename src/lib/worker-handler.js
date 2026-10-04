@@ -8,21 +8,6 @@ import { createRuntimeConfig } from "./runtime-config.js";
 const API_DOC_PATHS = new Set(["/api/", "/api/index.html", "/api/openapi.yaml"]);
 const ABOUT_DOC_PATHS = new Set(["/about", "/about.html"]);
 
-async function fetchDocumentation(request, requestURL, frontend) {
-  const pagesBase = frontend.pagesBase || frontend.url;
-  if (!pagesBase) {
-    return new Response("Documentation pages are unavailable", { status: 503 });
-  }
-
-  try {
-    const documentURL = new URL(requestURL.pathname, pagesBase);
-    documentURL.search = requestURL.search;
-    return await fetch(new Request(documentURL, { method: request.method }));
-  } catch {
-    return new Response("Documentation pages are unavailable", { status: 503 });
-  }
-}
-
 async function handleEarlyRequest({ request, requestURL, env, shortener, flagRoutes }) {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: shortener.htmlHeaders() });
@@ -54,22 +39,16 @@ async function handleEarlyRequest({ request, requestURL, env, shortener, flagRou
   return null;
 }
 
-async function handlePageRequest({
-  request,
-  requestURL,
-  env,
-  shortener,
-  flagRoutes,
-  homePath,
-  rootResponse,
-}) {
+async function handlePageRequest({ request, requestURL, env, shortener, flagRoutes, homePath }) {
   const path = requestURL.pathname.split("/")[1] || "";
   const variantResponse = await flagRoutes.evaluateShortening(request, requestURL.pathname, () =>
     fetchFrontendAsset(env, request, "/")
   );
   if (variantResponse) return variantResponse;
   if (requestURL.pathname === homePath) return fetchFrontendAsset(env, request, "/");
-  if (requestURL.pathname === "/" && homePath !== "/") return rootResponse();
+  if (requestURL.pathname === "/" && homePath !== "/") {
+    return fetchFrontendAsset(env, request, "/docs/index.html");
+  }
   if (requestURL.pathname === "/favicon.ico") {
     return Response.redirect(new URL("/favicon.svg", request.url), 302);
   }
@@ -138,7 +117,6 @@ export function createWorkerHandler({
       shortener,
       flagRoutes,
       homePath,
-      rootResponse: () => fetchDocumentation(request, requestURL, config.frontend),
     });
   };
 }
