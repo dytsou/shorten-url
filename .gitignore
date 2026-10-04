@@ -1,3 +1,6 @@
+# Local-only configuration files on the source branch
+config.js
+
 # Environment files
 .env
 .env.local

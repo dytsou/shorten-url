@@ -4,7 +4,6 @@ compatibility_date = "2026-09-27"
 # Production must bind this Worker to an Access-protected custom hostname.
 # Keep the default workers.dev hostname disabled in the production deployment.
 workers_dev = false
-preview_urls = false
 
 [assets]
 directory = "./frontend/dist"
@@ -14,7 +13,7 @@ not_found_handling = "none"
 
 [[kv_namespaces]]
 binding = "LINKS"
-id = "863652ccd8aa41ba9a0f939ec5c341f7"
+id = "your-kv-namespace-id"
 
 # Provision a Flagship app, replace the placeholder, and uncomment this block
 # before enabling country-targeted shortening. Without it the Worker safely

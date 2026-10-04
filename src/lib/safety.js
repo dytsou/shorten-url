@@ -1,5 +1,20 @@
 import { traceSpan } from "./observability.js";
 
+export function isSafeDestination(url) {
+  if (typeof url !== "string") return false;
+  try {
+    const parsed = new URL(url);
+    return (
+      (parsed.protocol === "https:" || parsed.protocol === "http:") &&
+      !parsed.username &&
+      !parsed.password &&
+      !parsed.hash
+    );
+  } catch {
+    return false;
+  }
+}
+
 export async function isUrlSafe(url, worker, endpoints) {
   return traceSpan("safe_browsing.check", async () => {
     const body = JSON.stringify({
