@@ -24,6 +24,12 @@ function createAssets() {
     "/assets/main.js": new Response("console.log('asset');", {
       headers: { "content-type": "text/javascript;charset=UTF-8" },
     }),
+    "/api/": new Response('<div id="swagger-ui"></div><script>SwaggerUIBundle()</script>', {
+      headers: { "content-type": "text/html;charset=UTF-8" },
+    }),
+    "/api/openapi.yaml": new Response("openapi: 3.1.0", {
+      headers: { "content-type": "application/yaml;charset=UTF-8" },
+    }),
     "/favicon.svg": new Response("<svg></svg>", {
       headers: { "content-type": "image/svg+xml" },
     }),
@@ -54,6 +60,26 @@ describe("Worker-hosted frontend assets", () => {
     expect(await response.text()).toContain("worker shell");
     expect(assets.fetch).toHaveBeenCalledTimes(1);
     expect(new URL(assets.calls[0].url).pathname).toBe("/");
+  });
+
+  it("serves the Swagger UI and OpenAPI spec at the root API path", async () => {
+    const assets = createAssets();
+    const worker = createHandler();
+    const environment = createEnvironment(assets);
+
+    const redirect = await worker(request("/api?from=footer"), environment);
+    expect(redirect.status).toBe(308);
+    expect(redirect.headers.get("location")).toBe("https://short.example/api/?from=footer");
+
+    const docs = await worker(request("/api/"), environment);
+    expect(docs.status).toBe(200);
+    expect(await docs.text()).toContain("SwaggerUIBundle");
+    expect(new URL(assets.calls[0].url).pathname).toBe("/api/");
+
+    const spec = await worker(request("/api/openapi.yaml"), environment);
+    expect(spec.status).toBe(200);
+    expect(await spec.text()).toContain("openapi: 3.1.0");
+    expect(new URL(assets.calls[1].url).pathname).toBe("/api/openapi.yaml");
   });
 
   it("removes settings page routes while keeping settings APIs protected", async () => {

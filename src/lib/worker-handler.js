@@ -5,6 +5,8 @@ import { endpointsFromFrontend } from "./endpoints.js";
 import { createShortener } from "./shortener.js";
 import { createRuntimeConfig } from "./runtime-config.js";
 
+const API_DOC_PATHS = new Set(["/api/", "/api/index.html", "/api/openapi.yaml"]);
+
 /**
  * Compose the shared Worker request handler.
  *
@@ -53,6 +55,14 @@ export function createWorkerHandler({
         apiPath: requestURL.pathname,
         allowedApiPaths: ["/", "/shorten"],
       });
+    }
+    if (request.method === "GET" || request.method === "HEAD") {
+      if (requestURL.pathname === "/api") {
+        return Response.redirect(new URL(`/api/${requestURL.search}`, requestURL), 308);
+      }
+      if (API_DOC_PATHS.has(requestURL.pathname)) {
+        return fetchFrontendAsset(env, request, requestURL.pathname);
+      }
     }
     const variantResponse = await flagRoutes.evaluateShortening(request, requestURL.pathname, () =>
       fetchFrontendAsset(env, request, "/")
