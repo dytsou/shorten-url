@@ -141,12 +141,12 @@ export function createFlagRoutes({
       ...(Object.keys(context).length ? { context } : {}),
     });
     log("info", "flagship.evaluation", flagEvaluationFields(decision));
-    const response =
-      decision.outcome === "matched"
-        ? Response.redirect(decision.destination, 302)
-        : typeof fallbackResponse === "function"
-          ? await fallbackResponse()
-          : null;
+    let response = null;
+    if (decision.outcome === "matched") {
+      response = Response.redirect(decision.destination, 302);
+    } else if (typeof fallbackResponse === "function") {
+      response = await fallbackResponse();
+    }
     if (!response || existingTargetingKey) return response;
     return setTargetingKeyCookie(response, targetingKey);
   }

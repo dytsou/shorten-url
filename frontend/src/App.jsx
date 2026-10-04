@@ -56,6 +56,59 @@ function normalizeVariantUrl(variant) {
   return "";
 }
 
+function normalizeSourceConditions(rule) {
+  if (Array.isArray(rule?.conditions)) return rule.conditions;
+
+  let legacyCountries = [];
+  if (Array.isArray(rule?.countries)) {
+    legacyCountries = rule.countries;
+  } else if (typeof rule?.country === "string") {
+    legacyCountries = [rule.country];
+  }
+
+  if (!legacyCountries.length) return [];
+  return [{ attribute: "country", operator: "in", value: legacyCountries }];
+}
+
+function normalizeEditorCondition(condition) {
+  const isKnownAttribute = FLAGSHIP_CONTEXT_FIELDS.some(
+    (field) => field.key === condition?.attribute
+  );
+  const isKnownOperator = TARGETING_OPERATORS.some(
+    (operator) => operator.key === condition?.operator
+  );
+  let value = "";
+  if (Array.isArray(condition?.value)) {
+    value = condition.value.join(", ");
+  } else if (typeof condition?.value === "string") {
+    value = condition.value;
+  }
+
+  return {
+    id: createEditorItemId("condition"),
+    attribute: isKnownAttribute ? condition.attribute : "country",
+    operator: isKnownOperator ? condition.operator : "equals",
+    value,
+  };
+}
+
+function normalizeEditorRule(rule, index, variants) {
+  return {
+    id: createEditorItemId("rule"),
+    priority: Number.isInteger(rule?.priority) ? rule.priority : index + 1,
+    variant: typeof rule?.variant === "string" ? rule.variant : variants[0].key,
+    conditions: normalizeSourceConditions(rule).map(normalizeEditorCondition),
+    rolloutPercentage: Number.isFinite(rule?.rolloutPercentage) ? rule.rolloutPercentage : "",
+  };
+}
+
+function normalizeDefaultVariant(flag, variants) {
+  if (typeof flag.defaultVariant === "string" && flag.defaultVariant) {
+    return flag.defaultVariant;
+  }
+  return variants[0].key;
+}
+
 function normalizeDefinition(flag) {
   if (!flag) return emptyDefinition();
 
@@ -69,40 +122,7 @@ function normalizeDefinition(flag) {
   const normalizedVariants = variants.length ? variants : emptyDefinition().variants;
   const rules = Array.isArray(flag.rules)
     ? flag.rules
-        .map((rule, index) => {
-          const legacyCountries = Array.isArray(rule?.countries)
-            ? rule.countries
-            : typeof rule?.country === "string"
-              ? [rule.country]
-              : [];
-          const sourceConditions = Array.isArray(rule?.conditions)
-            ? rule.conditions
-            : legacyCountries.length
-              ? [{ attribute: "country", operator: "in", value: legacyCountries }]
-              : [];
-          return {
-            id: createEditorItemId("rule"),
-            priority: Number.isInteger(rule?.priority) ? rule.priority : index + 1,
-            variant: typeof rule?.variant === "string" ? rule.variant : normalizedVariants[0].key,
-            conditions: sourceConditions.map((condition) => ({
-              id: createEditorItemId("condition"),
-              attribute: FLAGSHIP_CONTEXT_FIELDS.some((field) => field.key === condition?.attribute)
-                ? condition.attribute
-                : "country",
-              operator: TARGETING_OPERATORS.some((operator) => operator.key === condition?.operator)
-                ? condition.operator
-                : "equals",
-              value: Array.isArray(condition?.value)
-                ? condition.value.join(", ")
-                : typeof condition?.value === "string"
-                  ? condition.value
-                  : "",
-            })),
-            rolloutPercentage: Number.isFinite(rule?.rolloutPercentage)
-              ? rule.rolloutPercentage
-              : "",
-          };
-        })
+        .map((rule, index) => normalizeEditorRule(rule, index, normalizedVariants))
         .sort((left, right) => left.priority - right.priority)
         .map((rule, index) => ({ ...rule, priority: index + 1 }))
     : [];
@@ -111,10 +131,7 @@ function normalizeDefinition(flag) {
     key: typeof flag.key === "string" && flag.key ? flag.key : FLAG_KEY,
     description: typeof flag.description === "string" ? flag.description : "",
     enabled: flag.enabled === true,
-    defaultVariant:
-      typeof flag.defaultVariant === "string" && flag.defaultVariant
-        ? flag.defaultVariant
-        : normalizedVariants[0].key,
+    defaultVariant: normalizeDefaultVariant(flag, normalizedVariants),
     variants: normalizedVariants,
     rules,
   };
@@ -159,7 +176,7 @@ function toFlagPayload(definition) {
   };
 }
 
-function draftProblem(definition) {
+function draftVariantProblem(definition) {
   if (!definition.variants.length) return "Add at least one destination variant.";
 
   const keys = definition.variants.map((variant) => variant.key.trim()).filter(Boolean);
@@ -169,51 +186,76 @@ function draftProblem(definition) {
   if (definition.variants.some((variant) => !variant.url.trim())) {
     return "Every variant needs a destination URL.";
   }
+  return "";
+}
 
-  if (definition.rules.some((rule) => !keys.includes(rule.variant))) {
+function draftConditionProblem(condition) {
+  if (!condition.value.trim()) {
+    return "Complete each condition or remove it before saving.";
+  }
+
+  if (condition.attribute === "country") {
+    const countryValues = LIST_OPERATORS.has(condition.operator)
+      ? condition.value.split(",").map((value) => value.trim().toUpperCase())
+      : [condition.value.trim().toUpperCase()];
+    if (countryValues.some((value) => !/^[A-Z]{2}$/.test(value))) {
+      return "Country conditions need two-letter codes, such as US or CA.";
+    }
+    if (new Set(countryValues).size !== countryValues.length) {
+      return "Remove duplicate country codes from a condition.";
+    }
+  }
+
+  if (!LIST_OPERATORS.has(condition.operator)) return "";
+  const values = condition.value
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  if (!values.length) return "Enter at least one value for an ‘is one of’ condition.";
+  if (new Set(values).size !== values.length) {
+    return "Remove duplicate values from a condition.";
+  }
+  return "";
+}
+
+function draftRolloutProblem(rule) {
+  const hasRollout =
+    rule.rolloutPercentage !== "" &&
+    rule.rolloutPercentage !== undefined &&
+    rule.rolloutPercentage !== null;
+  if (!hasRollout) return "";
+
+  const percentage = Number(rule.rolloutPercentage);
+  if (
+    !Number.isFinite(percentage) ||
+    percentage < 0 ||
+    percentage > 100 ||
+    Math.abs(percentage * 100 - Math.round(percentage * 100)) > 1e-8
+  ) {
+    return "Rollout percentages must be between 0 and 100, with at most two decimals.";
+  }
+  return "";
+}
+
+function draftRuleProblem(rule) {
+  for (const condition of rule.conditions) {
+    const problem = draftConditionProblem(condition);
+    if (problem) return problem;
+  }
+  return draftRolloutProblem(rule);
+}
+
+function draftProblem(definition) {
+  const variantProblem = draftVariantProblem(definition);
+  if (variantProblem) return variantProblem;
+
+  const variantKeys = new Set(definition.variants.map((variant) => variant.key.trim()));
+  if (definition.rules.some((rule) => !variantKeys.has(rule.variant))) {
     return "Choose an existing variant for every segment.";
   }
   for (const rule of definition.rules) {
-    for (const condition of rule.conditions) {
-      if (!condition.value.trim()) {
-        return "Complete each condition or remove it before saving.";
-      }
-      if (condition.attribute === "country") {
-        const values = LIST_OPERATORS.has(condition.operator)
-          ? condition.value.split(",").map((value) => value.trim().toUpperCase())
-          : [condition.value.trim().toUpperCase()];
-        if (values.some((value) => !/^[A-Z]{2}$/.test(value))) {
-          return "Country conditions need two-letter codes, such as US or CA.";
-        }
-        if (new Set(values).size !== values.length) {
-          return "Remove duplicate country codes from a condition.";
-        }
-      }
-      if (LIST_OPERATORS.has(condition.operator)) {
-        const values = condition.value
-          .split(",")
-          .map((value) => value.trim())
-          .filter(Boolean);
-        if (!values.length) return "Enter at least one value for an ‘is one of’ condition.";
-        if (new Set(values).size !== values.length)
-          return "Remove duplicate values from a condition.";
-      }
-    }
-    const hasRollout =
-      rule.rolloutPercentage !== "" &&
-      rule.rolloutPercentage !== undefined &&
-      rule.rolloutPercentage !== null;
-    if (hasRollout) {
-      const percentage = Number(rule.rolloutPercentage);
-      if (
-        !Number.isFinite(percentage) ||
-        percentage < 0 ||
-        percentage > 100 ||
-        Math.abs(percentage * 100 - Math.round(percentage * 100)) > 1e-8
-      ) {
-        return "Rollout percentages must be between 0 and 100, with at most two decimals.";
-      }
-    }
+    const problem = draftRuleProblem(rule);
+    if (problem) return problem;
   }
   return "";
 }
@@ -536,19 +578,24 @@ function DefinitionEditor({ definition, setDefinition, disabled }) {
               maxLength={512}
             />
           </div>
-          <label className="toggle-row" htmlFor="flag-enabled">
+          <div className="toggle-row">
             <span>
-              <strong>Flag enabled</strong>
+              <label htmlFor="flag-enabled">
+                <strong id="flag-enabled-label">Flag enabled</strong>
+              </label>
               <small>When disabled, Flagship returns the default variant.</small>
             </span>
             <input
               id="flag-enabled"
               type="checkbox"
+              aria-labelledby="flag-enabled-label"
               checked={definition.enabled}
               onChange={(event) => updateDefinition({ enabled: event.target.checked })}
             />
-            <span className="toggle-control" aria-hidden="true" />
-          </label>
+            <label className="toggle-control" htmlFor="flag-enabled">
+              <span className="visually-hidden">Flag enabled</span>
+            </label>
+          </div>
         </div>
       </section>
 

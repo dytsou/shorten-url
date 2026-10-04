@@ -170,7 +170,7 @@ function validateCondition(condition, errors) {
   }
 }
 
-function validateRule(rule, variantKeys, priorities, errors) {
+function validateRuleShape(rule, errors) {
   if (!rule || Object.keys(rule).some((field) => !RULE_FIELDS.has(field))) {
     errors.push("rules contain unsupported fields");
   }
@@ -185,6 +185,9 @@ function validateRule(rule, variantKeys, priorities, errors) {
   ) {
     errors.push("rules must use one targeting field shape");
   }
+}
+
+function validateRulePriorityAndVariant(rule, variantKeys, priorities, errors) {
   if (!Number.isInteger(rule?.priority) || rule.priority < 1 || priorities.has(rule.priority)) {
     errors.push("rule priorities must be unique positive integers");
   }
@@ -192,7 +195,9 @@ function validateRule(rule, variantKeys, priorities, errors) {
   if (!variantKeys.has(rule?.variant || rule?.serve_variation)) {
     errors.push("rule variant must exist");
   }
-  const conditions = ruleConditions(rule);
+}
+
+function validateRuleConditions(conditions, errors) {
   if (conditions.length > MAX_CONDITIONS_PER_RULE) {
     errors.push(`rules can contain at most ${MAX_CONDITIONS_PER_RULE} conditions`);
   }
@@ -203,6 +208,9 @@ function validateRule(rule, variantKeys, priorities, errors) {
     if (conditionKeys.has(key)) errors.push("rule conditions must be unique");
     conditionKeys.add(key);
   }
+}
+
+function validateRuleRollout(rule, errors) {
   const hasRollout = rule?.rolloutPercentage !== undefined && rule?.rolloutPercentage !== null;
   if (
     hasRollout &&
@@ -214,6 +222,14 @@ function validateRule(rule, variantKeys, priorities, errors) {
   ) {
     errors.push("rollout percentages must be between 0 and 100 with at most two decimals");
   }
+}
+
+function validateRule(rule, variantKeys, priorities, errors) {
+  validateRuleShape(rule, errors);
+  validateRulePriorityAndVariant(rule, variantKeys, priorities, errors);
+  const conditions = ruleConditions(rule);
+  validateRuleConditions(conditions, errors);
+  validateRuleRollout(rule, errors);
 }
 
 function validateRules(rules, variantKeys, errors) {
@@ -233,6 +249,17 @@ function normalizedVariant(variant) {
   };
 }
 
+function normalizeConditionValue(condition) {
+  if (ARRAY_OPERATORS.has(condition.operator)) {
+    return condition.value.map((value) => {
+      if (condition.attribute === "country") return normalizeCountry(value);
+      return value.trim();
+    });
+  }
+  if (condition.attribute === "country") return normalizeCountry(condition.value);
+  return condition.value.trim();
+}
+
 function normalizedRule(rule) {
   const normalized = {
     priority: rule.priority,
@@ -240,13 +267,7 @@ function normalizedRule(rule) {
     conditions: ruleConditions(rule).map((condition) => ({
       attribute: condition.attribute,
       operator: condition.operator,
-      value: ARRAY_OPERATORS.has(condition.operator)
-        ? condition.value.map((value) =>
-            condition.attribute === "country" ? normalizeCountry(value) : value.trim()
-          )
-        : condition.attribute === "country"
-          ? normalizeCountry(condition.value)
-          : condition.value.trim(),
+      value: normalizeConditionValue(condition),
     })),
   };
   if (rule.rolloutPercentage !== undefined && rule.rolloutPercentage !== null) {
