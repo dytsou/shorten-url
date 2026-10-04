@@ -1255,7 +1255,7 @@ export default function App() {
             >
               MIT License
             </a>
-            .
+            {"."}
           </p>
         </footer>
       </main>
