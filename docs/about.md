@@ -179,9 +179,9 @@ The API reference is a static Swagger UI built from `docs/api/` and bundled into
 ### OpenAPI Specification
 
 - **Format**: OpenAPI 3.1.0
-- **Location**: [docs/api/openapi.yaml](docs/api/openapi.yaml)
-- **Interactive UI**: [docs/api/index.html](docs/api/index.html), bundled into Worker assets and served at `/api/`
-- **Offline Access**: [docs/api/index.html](docs/api/index.html) for local viewing
+- **Location**: [docs/api/openapi.yaml](/api/openapi.yaml)
+- **Interactive UI**: [docs/api/index.html](/api/), bundled into Worker assets and served at `/api/`
+- **Offline Access**: [docs/api/index.html](/api/) for local viewing
 
 ### Shorten URL
 
@@ -289,6 +289,8 @@ shorten-url/
 - Consider enabling Google Safe Browsing for redirect destinations
 - Regularly monitor your KV storage usage
 
+<a id="troubleshooting"></a>
+
 ## Troubleshooting
 
 ### Common Issues
@@ -324,7 +326,7 @@ shorten-url/
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](https://github.com/dytsou/shorten-url/blob/main/LICENSE) file for details.
 
 ## Contributing
 
@@ -338,7 +340,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 If you encounter any issues or have questions:
 
-1. Check the [troubleshooting section](#-troubleshooting)
+1. Check the [troubleshooting section](#troubleshooting)
 2. Search existing issues on GitHub
 3. Create a new issue with detailed information
 

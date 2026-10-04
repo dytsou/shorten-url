@@ -24,6 +24,10 @@ function createAssets() {
     "/assets/main.js": new Response("console.log('asset');", {
       headers: { "content-type": "text/javascript;charset=UTF-8" },
     }),
+    "/about": new Response(
+      "<html><body><h1>How to use Shorten URL</h1><p>Destination URL</p><h2>Configuration Options</h2><h2>Troubleshooting</h2><h2>Deployment Checklist</h2></body></html>",
+      { headers: { "content-type": "text/html;charset=UTF-8" } }
+    ),
     "/api/": new Response('<div id="swagger-ui"></div><script>SwaggerUIBundle()</script>', {
       headers: { "content-type": "text/html;charset=UTF-8" },
     }),
@@ -80,6 +84,28 @@ describe("Worker-hosted frontend assets", () => {
     expect(spec.status).toBe(200);
     expect(await spec.text()).toContain("openapi: 3.1.0");
     expect(new URL(assets.calls[1].url).pathname).toBe("/api/openapi.yaml");
+  });
+
+  it("serves the website usage guide from /about", async () => {
+    const assets = createAssets();
+    const flagshipAdapter = { evaluate: vi.fn() };
+    const worker = createWorkerHandler({ flagshipAdapter });
+    const environment = createEnvironment(assets);
+
+    const trailingSlash = await worker(request("/about/?from=footer"), environment);
+    expect(trailingSlash.status).toBe(308);
+    expect(trailingSlash.headers.get("location")).toBe("https://short.example/about?from=footer");
+
+    const about = await worker(request("/about"), environment);
+    expect(about.status).toBe(200);
+    const page = await about.text();
+    expect(page).toContain("How to use Shorten URL");
+    expect(page).toContain("Configuration Options");
+    expect(page).toContain("Troubleshooting");
+    expect(page).toContain("Deployment Checklist");
+    expect(new URL(assets.calls[0].url).pathname).toBe("/about");
+    expect(flagshipAdapter.evaluate).not.toHaveBeenCalled();
+    expect(assets.fetch).toHaveBeenCalledTimes(1);
   });
 
   it("removes settings page routes while keeping settings APIs protected", async () => {
