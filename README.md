@@ -1,6 +1,6 @@
 # URL Shortener
 
-A URL shortener built with Cloudflare Workers, Cloudflare KV, and a responsive React interface. On the production branch, the Worker serves the product UI at `/shorten`, keeps shortening APIs at the root, and exposes Cloudflare Pages documentation at `/`. The API reference is bundled into Worker assets and served at `/api/`.
+A URL shortener built with Cloudflare Workers, Cloudflare KV, and a responsive React interface. On the production branch, the Worker serves the product UI at `/shorten`, keeps shortening APIs at the root, and serves its bundled documentation at `/` and `/about`. The API reference is bundled into Worker assets and served at `/api/`.
 
 [![Built with Cloudflare](https://workers.cloudflare.com/built-with-cloudflare.svg)](https://cloudflare.com)
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/dytsou/shorten-url)
@@ -25,7 +25,7 @@ The Worker does not implement click analytics, per-IP rate limiting, or blocked-
 
 ### Worker-hosted React frontend
 
-The product UI is React source in `frontend/`, compiled to `frontend/dist`, and served by the Worker through its `ASSETS` binding. Worker routing and APIs remain in `src/`; the separate Cloudflare Pages site publishes documentation from `docs/`. `docs/index.html` is not a product asset.
+The product UI is React source in `frontend/`, compiled to `frontend/dist`, and served by the Worker through its `ASSETS` binding. Worker routing and APIs remain in `src/`. The build also bundles the documentation landing page, usage guide, and API reference from `docs/`, so production documentation does not depend on a separate Pages hostname.
 
 For a clean local setup, install both declared packages and use the root commands:
 
@@ -38,9 +38,9 @@ pnpm build
 pnpm dev
 ```
 
-`pnpm dev`, `pnpm preview`, and `pnpm deploy` build `frontend/dist` before running Wrangler. The production Worker serves the UI at `GET /shorten`; `GET /` proxies the documentation landing page from Cloudflare Pages, while `GET /api/` serves the API reference bundled into Worker assets. Shortening requests stay at `POST /`, and protected settings APIs stay under `/settings/api/*`.
+`pnpm dev`, `pnpm preview`, and `pnpm deploy` build `frontend/dist` before running Wrangler. The production Worker serves the UI at `GET /shorten`, the bundled documentation landing page at `GET /`, the usage guide at `GET /about`, and the API reference at `GET /api/`. Shortening requests stay at `POST /`, and protected settings APIs stay under `/settings/api/*`.
 
-Production must use an Access-protected custom hostname, set `workers_dev = false`, and set `ACCESS_ALLOWED_HOSTS` to that hostname. Keep `CLOUDFLARE_API_TOKEN`, `FLAGSHIP_CSRF_SECRET`, and provider credentials in Cloudflare/GitHub secrets, never Vite metadata or tracked configuration. `FRONTEND_URL` and `FRONTEND_PAGES_BASE` select the Pages site used for docs and legacy error/interstitial pages.
+Production must use an Access-protected custom hostname, set `workers_dev = false`, and set `ACCESS_ALLOWED_HOSTS` to that hostname. Keep `CLOUDFLARE_API_TOKEN`, `FLAGSHIP_CSRF_SECRET`, and provider credentials in Cloudflare/GitHub secrets, never Vite metadata or tracked configuration. `FRONTEND_URL` and `FRONTEND_PAGES_BASE` are only needed for separately hosted legacy error/interstitial pages.
 
 The Worker deployment workflow reads the non-secret GitHub variables
 `LINKS_KV_NAMESPACE_ID` and `ACCESS_ALLOWED_HOSTS`, plus the
@@ -49,9 +49,9 @@ time.
 
 ### Prerequisites
 
-- A Cloudflare account with Workers and Pages; the Deploy to Cloudflare button provisions the required KV namespace
+- A Cloudflare account with Workers; the Deploy to Cloudflare button provisions the required KV namespace
 - A GitHub or GitLab account to receive the repository created by the Deploy to Cloudflare button
-- A Cloudflare Pages project to publish `docs/`
+- A Cloudflare Pages project only if you want a standalone documentation site in addition to the Worker-hosted pages
 - Node.js 24 or newer and pnpm 10.22.0 for manual deployment
 
 ### 1. Deploy with Cloudflare (Recommended)
@@ -87,11 +87,11 @@ pnpm deploy
 
 The `LINKS` binding in `wrangler.toml` omits an account-specific namespace ID so Wrangler can provision it. To use an existing KV namespace, create it with `pnpm exec wrangler kv namespace create LINKS` and set its ID in `wrangler.toml` before deploying.
 
-### 3. Deploy Documentation to Cloudflare Pages
+### 3. Optional: Publish Documentation to Cloudflare Pages
 
 The `docs/` directory contains the API reference and documentation. To create a Pages site, connect your repository, set the production branch to the branch containing your documentation, leave the build command blank, and use `docs` as the output directory.
 
-This repository's Cloudflare Pages project publishes `docs/` from the `production` branch. The Worker serves the product UI at `/shorten` and the API reference at `/api/` from its `ASSETS` binding, and proxies the Pages homepage at `/`.
+The production Worker already serves `docs/index.html`, `/about`, and `/api/` from its `ASSETS` binding. Publishing `docs/` to Pages is optional and provides a standalone copy; the Worker does not fetch its homepage from Pages.
 
 For custom error and interstitial pages, set `frontend.pagesBase` to the directory containing those files.
 
@@ -106,8 +106,8 @@ The Worker returns short URLs using the request's origin, so configure its publi
 | Option                   | Description                                                     | Default |
 | ------------------------ | --------------------------------------------------------------- | ------- |
 | `frontend.homePath`      | Worker path that serves the product UI                          | `/`     |
-| `frontend.url`           | Cloudflare Pages origin for public docs and legacy hosted pages | `""`    |
-| `frontend.pagesBase`     | Base URL for docs and hosted error/interstitial pages           | `url`   |
+| `frontend.url`           | Optional origin for legacy hosted error/interstitial pages      | `""`    |
+| `frontend.pagesBase`     | Base URL for hosted error/interstitial pages                    | `url`   |
 | `frontend.workerOrigin`  | Public Worker origin for a separately hosted frontend           | `""`    |
 | `frontend.displayDomain` | Domain shown in UI (null = auto-detect)                         | `null`  |
 | `frontend.theme`         | UI theme selection                                              | `""`    |
@@ -146,8 +146,7 @@ The Worker returns short URLs using the request's origin, so configure its publi
 ### Custom Domain
 
 1. Add a custom domain to the Cloudflare Worker and protect it with Cloudflare Access.
-2. Add a custom domain to the Cloudflare Pages project for documentation.
-3. Set `frontend.url` and `frontend.pagesBase` to the Pages origin used for the production docs proxy.
+2. If you use separately hosted error or interstitial pages, set `frontend.url` and `frontend.pagesBase` to their origin.
 
 ### Google Safe Browsing
 

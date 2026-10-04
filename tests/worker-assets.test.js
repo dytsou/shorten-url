@@ -21,6 +21,10 @@ function createAssets() {
     "/": new Response("<html><body>worker shell</body></html>", {
       headers: { "content-type": "text/html;charset=UTF-8" },
     }),
+    "/docs/index.html": new Response(
+      "<html><body><h1>Shorten URL</h1><p>Documentation and API reference</p></body></html>",
+      { headers: { "content-type": "text/html;charset=UTF-8" } }
+    ),
     "/assets/main.js": new Response("console.log('asset');", {
       headers: { "content-type": "text/javascript;charset=UTF-8" },
     }),
@@ -67,7 +71,7 @@ describe("Worker-hosted frontend assets", () => {
     expect(new URL(assets.calls[0].url).pathname).toBe("/");
   });
 
-  it("mounts the product at its configured path and serves docs from the root", async () => {
+  it("mounts the product at its configured path and serves bundled docs from the root", async () => {
     const assets = createAssets();
     const pagesFetch = vi.fn().mockImplementation(async () => new Response("documentation"));
     vi.stubGlobal("fetch", pagesFetch);
@@ -87,18 +91,19 @@ describe("Worker-hosted frontend assets", () => {
     const environment = createEnvironment(assets);
 
     const homepage = await worker(request("/"), environment);
-    expect(await homepage.text()).toBe("documentation");
-    expect(new URL(pagesFetch.mock.calls[0][0].url).pathname).toBe("/");
+    expect(homepage.status).toBe(200);
+    expect(await homepage.text()).toContain("Documentation and API reference");
+    expect(new URL(assets.calls[0].url).pathname).toBe("/docs/index.html");
 
     const apiDocs = await worker(request("/api/"), environment);
     expect(apiDocs.status).toBe(200);
     expect(await apiDocs.text()).toContain("SwaggerUIBundle");
-    expect(new URL(assets.calls[0].url).pathname).toBe("/api/");
+    expect(new URL(assets.calls[1].url).pathname).toBe("/api/");
 
     const apiSpec = await worker(request("/api/openapi.yaml"), environment);
     expect(apiSpec.status).toBe(200);
     expect(await apiSpec.text()).toContain("openapi: 3.1.0");
-    expect(new URL(assets.calls[1].url).pathname).toBe("/api/openapi.yaml");
+    expect(new URL(assets.calls[2].url).pathname).toBe("/api/openapi.yaml");
 
     const product = await worker(
       request("/shorten", { headers: mockedAccessHeaders() }),
@@ -106,9 +111,9 @@ describe("Worker-hosted frontend assets", () => {
     );
     expect(product.status).toBe(200);
     expect(await product.text()).toContain("worker shell");
-    expect(new URL(assets.calls[2].url).pathname).toBe("/");
-    expect(assets.fetch).toHaveBeenCalledTimes(3);
-    expect(pagesFetch).toHaveBeenCalledTimes(1);
+    expect(new URL(assets.calls[3].url).pathname).toBe("/");
+    expect(assets.fetch).toHaveBeenCalledTimes(4);
+    expect(pagesFetch).not.toHaveBeenCalled();
     expect(flagshipAdapter.evaluate).toHaveBeenCalledTimes(1);
   });
 
