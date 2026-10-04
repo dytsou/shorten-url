@@ -1,18 +1,27 @@
 /**
- * URL Shortener deployment configuration
+ * URL Shortener Configuration Example
  *
- * Set frontend.url to the public static homepage that the Worker should serve.
- * Keep private credentials out of this tracked file.
+ * Copy this file to config.js and modify the values according to your setup.
+ * This file should be committed to your repository as a template.
+ * The actual config.js file should be added to .gitignore to keep your secrets safe.
  */
 
 const config = {
   // Frontend Configuration
   frontend: {
-    // Cloudflare Pages URL used for the public docs homepage and /api reference.
-    url: "https://shorten-url-13j.pages.dev/",
-    pagesBase: "https://shorten-url-13j.pages.dev/",
-    // Production serves the product UI here; the API stays at POST /.
-    homePath: "/shorten",
+    // Path that serves the product UI. Main and local previews use the root;
+    // production can mount it at /shorten while leaving APIs at the root.
+    homePath: "/",
+
+    // Leave empty when the Worker serves the React UI. Set this only for
+    // separately hosted legacy error/interstitial pages.
+    url: "",
+
+    // Public Worker origin used by frontend/index.html for shortening and
+    // protected settings APIs when the frontend is hosted separately. Keep it in
+    // sync with the HTML meta tag or VITE_WORKER_ORIGIN; leave empty when the
+    // Worker serves the page.
+    workerOrigin: "",
 
     // Domain displayed in the custom slug input prefix
     // If null, will use the current domain automatically
@@ -65,6 +74,7 @@ const config = {
       "support",
       "contact",
       "about",
+      "settings",
     ],
   },
 
@@ -72,6 +82,18 @@ const config = {
   storage: {
     // KV namespace binding name (must match wrangler.toml)
     binding_name: "LINKS",
+  },
+
+  // Flagship Configuration (optional until the binding and secrets are provisioned)
+  flagship: {
+    // Wrangler binding name. The Worker expects the official `env.FLAGS` binding.
+    binding_name: "FLAGS",
+    // Set in the Flagship binding block in wrangler.toml; do not put credentials here.
+    app_id: "",
+    // Worker secrets/variables used only by protected settings management:
+    // CLOUDFLARE_ACCOUNT_ID, FLAGSHIP_APP_ID, FLAGSHIP_API_TOKEN,
+    // FLAGSHIP_CSRF_SECRET, CF_ACCESS_ISSUER, CF_ACCESS_AUDIENCE,
+    // and optionally CF_ACCESS_JWKS_URL.
   },
 
   // Security Configuration
@@ -108,4 +130,12 @@ const config = {
   },
 };
 
-export default config;
+// Export for use in other files
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = config;
+}
+
+// Make available globally for browser usage
+if (typeof window !== "undefined") {
+  window.APP_CONFIG = config;
+}

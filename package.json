@@ -1,14 +1,15 @@
 {
   "name": "@dytsou/shorten-url",
-  "version": "2.4.3",
+  "version": "2.4.4",
   "description": "A modern, fast URL shortener built with Cloudflare Workers and a responsive web interface",
   "type": "module",
   "main": "src/worker.js",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "build": "pnpm --dir frontend build",
+    "dev": "pnpm build && wrangler dev --assets ./frontend/dist",
+    "deploy": "pnpm build && wrangler deploy",
     "logs": "wrangler tail",
-    "preview": "wrangler dev",
+    "preview": "pnpm build && wrangler dev --assets ./frontend/dist",
     "publish:npmjs": "pnpm publish --registry https://registry.npmjs.org",
     "publish:github": "pnpm publish --registry https://npm.pkg.github.com",
     "format": "prettier --write .",
@@ -57,6 +58,7 @@
     "src/lib/",
     "config/",
     "docs/",
+    "frontend/",
     "README.md",
     "LICENSE"
   ]

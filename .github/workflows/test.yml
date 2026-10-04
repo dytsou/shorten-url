@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - "src/**"
+      - "frontend/**"
       - "package.json"
       - "pnpm-lock.yaml"
       - "vitest.config.js"
@@ -11,6 +12,7 @@ on:
   pull_request:
     paths:
       - "src/**"
+      - "frontend/**"
       - "package.json"
       - "pnpm-lock.yaml"
       - "vitest.config.js"
@@ -36,6 +38,13 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build Worker assets
+        run: pnpm build
 
       - name: Run linter (if configured)
         continue-on-error: true
