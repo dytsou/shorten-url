@@ -47,8 +47,10 @@ jobs:
       - name: Verify production prerequisites
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          SPECIAL_REDIRECT_RULES: ${{ vars.SPECIAL_REDIRECT_RULES }}
         run: |
           test -n "$CLOUDFLARE_API_TOKEN"
+          test -n "$SPECIAL_REDIRECT_RULES"
           test -f wrangler.toml
           test -f frontend/dist/index.html
           grep -q 'main = "src/worker.js"' wrangler.toml
@@ -60,4 +62,5 @@ jobs:
       - name: Deploy Worker and assets
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: pnpm exec wrangler deploy --config wrangler.toml
+          SPECIAL_REDIRECT_RULES: ${{ vars.SPECIAL_REDIRECT_RULES }}
+        run: node scripts/deploy-worker.js

@@ -80,10 +80,14 @@ pnpm install --frozen-lockfile --ignore-scripts
 pnpm --dir frontend install --frozen-lockfile --ignore-scripts
 cp wrangler.toml.example wrangler.toml
 # Set the LINKS namespace ID and ACCESS_ALLOWED_HOSTS.
+cp .env.example .env
+# Edit SPECIAL_REDIRECT_RULES in .env; keep one [path, URL] rule per line.
 pnpm build
 pnpm exec wrangler login
 pnpm deploy
 ```
+
+`pnpm deploy` reads the multiline `.env` value and sends it to the Worker. The automatic GitHub Actions deployment reads the same `SPECIAL_REDIRECT_RULES` value from the `production` environment variable, so set that variable there when using release or workflow-triggered deployments.
 
 The `LINKS` binding in `wrangler.toml` omits an account-specific namespace ID so Wrangler can provision it. To use an existing KV namespace, create it with `pnpm exec wrangler kv namespace create LINKS` and set its ID in `wrangler.toml` before deploying.
 

@@ -7,7 +7,7 @@
   "scripts": {
     "build": "pnpm --dir frontend build",
     "dev": "pnpm build && wrangler dev --assets ./frontend/dist",
-    "deploy": "pnpm build && wrangler deploy",
+    "deploy": "pnpm build && node scripts/deploy-worker.js",
     "logs": "wrangler tail",
     "preview": "pnpm build && wrangler dev --assets ./frontend/dist",
     "publish:npmjs": "pnpm publish --registry https://registry.npmjs.org",
