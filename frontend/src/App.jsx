@@ -1196,13 +1196,7 @@ export default function App() {
             <a href="https://github.com/dytsou/shorten-url" target="_blank" rel="noreferrer">
               GitHub
             </a>
-            <a
-              href="https://github.com/dytsou/shorten-url/blob/main/README.md"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Docs
-            </a>
+            <a href="/about">Docs</a>
             <a href="/api/">API</a>
           </nav>
           <p>

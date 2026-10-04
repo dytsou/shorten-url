@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="How to shorten URLs and the complete Shorten URL project guide."
+    />
+    <title>Shorten URL Docs</title>
+    <style>
+      body {
+        max-width: 56rem;
+        margin: 2rem auto;
+        padding: 0 1.25rem;
+        color: #202923;
+        font:
+          1rem/1.6 system-ui,
+          sans-serif;
+      }
+
+      a {
+        color: #137f60;
+      }
+
+      nav {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+      }
+
+      h1,
+      h2,
+      h3 {
+        line-height: 1.3;
+      }
+
+      h1 {
+        font-size: 2rem;
+      }
+
+      h2 {
+        margin-top: 2rem;
+        padding-top: 1rem;
+        border-top: 1px solid #d6ded9;
+      }
+
+      li + li {
+        margin-top: 0.4rem;
+      }
+
+      code,
+      pre {
+        background: #f3f6f4;
+      }
+
+      code {
+        padding: 0.1rem 0.25rem;
+        border-radius: 3px;
+      }
+
+      pre {
+        overflow-x: auto;
+        padding: 1rem;
+        border: 1px solid #d6ded9;
+        border-radius: 4px;
+      }
+
+      pre code {
+        padding: 0;
+        background: transparent;
+      }
+
+      table {
+        display: block;
+        overflow-x: auto;
+        border-collapse: collapse;
+      }
+
+      th,
+      td {
+        padding: 0.45rem 0.65rem;
+        border: 1px solid #d6ded9;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        background: #f3f6f4;
+      }
+
+      img {
+        max-width: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <nav aria-label="Site links">
+        <a href="/">Home</a>
+        <a href="/shorten">Open the URL shortener</a>
+        <a href="/api/">API</a>
+      </nav>
+      <h1>How to use Shorten URL</h1>
+      <p>Create a short link from a destination URL in a few steps.</p>
+      <ol>
+        <li>
+          Enter the full destination URL, including <code>https://</code> or <code>http://</code>.
+        </li>
+        <li>
+          Optionally enter a custom slug. The URL prefix shown beside the field is part of your
+          short link. Leave the field blank to generate a short key automatically.
+        </li>
+        <li>Select <strong>Shorten URL</strong>.</li>
+        <li>
+          Use <strong>Copy link</strong> to copy the result, or <strong>Visit</strong> to open it.
+        </li>
+      </ol>
+      <nav aria-label="Documentation sections">
+        <a href="#project-documentation">Complete project guide</a>
+      </nav>
+      <article id="project-documentation"><!-- ABOUT_CONTENT --></article>
+    </main>
+  </body>
+</html>

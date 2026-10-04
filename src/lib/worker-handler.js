@@ -6,6 +6,7 @@ import { createShortener } from "./shortener.js";
 import { createRuntimeConfig } from "./runtime-config.js";
 
 const API_DOC_PATHS = new Set(["/api/", "/api/index.html", "/api/openapi.yaml"]);
+const ABOUT_DOC_PATHS = new Set(["/about", "/about.html"]);
 
 async function fetchDocumentation(request, requestURL, frontend) {
   const pagesBase = frontend.pagesBase || frontend.url;
@@ -75,6 +76,12 @@ export function createWorkerHandler({
     if (request.method === "GET" || request.method === "HEAD") {
       if (requestURL.pathname === "/api") {
         return Response.redirect(new URL(`/api/${requestURL.search}`, requestURL), 308);
+      }
+      if (requestURL.pathname === "/about/") {
+        return Response.redirect(new URL(`/about${requestURL.search}`, requestURL), 308);
+      }
+      if (ABOUT_DOC_PATHS.has(requestURL.pathname)) {
+        return fetchFrontendAsset(env, request, "/about");
       }
       if (API_DOC_PATHS.has(requestURL.pathname)) {
         return fetchFrontendAsset(env, request, requestURL.pathname);

@@ -1,20 +1,27 @@
 import { readFile } from "node:fs/promises";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { marked } from "marked";
 
-const apiDocsDirectory = new URL("../docs/api/", import.meta.url);
+const docsDirectory = new URL("../docs/", import.meta.url);
 
-function apiDocsAssets() {
+function siteDocsAssets() {
   return {
-    name: "api-docs-assets",
+    name: "site-docs-assets",
     apply: "build",
     async generateBundle() {
-      const [indexHtml, openApiSpec] = await Promise.all([
-        readFile(new URL("index.html", apiDocsDirectory), "utf8"),
-        readFile(new URL("openapi.yaml", apiDocsDirectory), "utf8"),
+      const [aboutTemplate, aboutMarkdown, apiIndexHtml, openApiSpec] = await Promise.all([
+        readFile(new URL("about-template.html", import.meta.url), "utf8"),
+        readFile(new URL("about.md", docsDirectory), "utf8"),
+        readFile(new URL("api/index.html", docsDirectory), "utf8"),
+        readFile(new URL("api/openapi.yaml", docsDirectory), "utf8"),
       ]);
 
-      this.emitFile({ type: "asset", fileName: "api/index.html", source: indexHtml });
+      const projectGuide = aboutMarkdown.replace(/^# URL Shortener$/m, "## URL Shortener");
+      const aboutHtml = aboutTemplate.replace("<!-- ABOUT_CONTENT -->", marked.parse(projectGuide));
+
+      this.emitFile({ type: "asset", fileName: "about.html", source: aboutHtml });
+      this.emitFile({ type: "asset", fileName: "api/index.html", source: apiIndexHtml });
       this.emitFile({ type: "asset", fileName: "api/openapi.yaml", source: openApiSpec });
     },
   };
@@ -23,5 +30,5 @@ function apiDocsAssets() {
 export default defineConfig({
   base: "/",
   publicDir: "static",
-  plugins: [react(), apiDocsAssets()],
+  plugins: [react(), siteDocsAssets()],
 });
