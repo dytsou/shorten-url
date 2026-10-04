@@ -24,6 +24,12 @@ function createAssets() {
     "/assets/main.js": new Response("console.log('asset');", {
       headers: { "content-type": "text/javascript;charset=UTF-8" },
     }),
+    "/api/": new Response('<div id="swagger-ui"></div><script>SwaggerUIBundle()</script>', {
+      headers: { "content-type": "text/html;charset=UTF-8" },
+    }),
+    "/api/openapi.yaml": new Response("openapi: 3.1.0", {
+      headers: { "content-type": "application/yaml;charset=UTF-8" },
+    }),
     "/favicon.svg": new Response("<svg></svg>", {
       headers: { "content-type": "image/svg+xml" },
     }),
@@ -81,8 +87,14 @@ describe("Worker-hosted frontend assets", () => {
     expect(new URL(pagesFetch.mock.calls[0][0].url).pathname).toBe("/");
 
     const apiDocs = await worker(request("/api/"), environment);
-    expect(await apiDocs.text()).toBe("documentation");
-    expect(new URL(pagesFetch.mock.calls[1][0].url).pathname).toBe("/api/");
+    expect(apiDocs.status).toBe(200);
+    expect(await apiDocs.text()).toContain("SwaggerUIBundle");
+    expect(new URL(assets.calls[0].url).pathname).toBe("/api/");
+
+    const apiSpec = await worker(request("/api/openapi.yaml"), environment);
+    expect(apiSpec.status).toBe(200);
+    expect(await apiSpec.text()).toContain("openapi: 3.1.0");
+    expect(new URL(assets.calls[1].url).pathname).toBe("/api/openapi.yaml");
 
     const product = await worker(
       request("/shorten", { headers: mockedAccessHeaders() }),
@@ -90,9 +102,9 @@ describe("Worker-hosted frontend assets", () => {
     );
     expect(product.status).toBe(200);
     expect(await product.text()).toContain("worker shell");
-    expect(new URL(assets.calls[0].url).pathname).toBe("/");
-    expect(assets.fetch).toHaveBeenCalledTimes(1);
-    expect(pagesFetch).toHaveBeenCalledTimes(2);
+    expect(new URL(assets.calls[2].url).pathname).toBe("/");
+    expect(assets.fetch).toHaveBeenCalledTimes(3);
+    expect(pagesFetch).toHaveBeenCalledTimes(1);
     expect(flagshipAdapter.evaluate).toHaveBeenCalledTimes(1);
   });
 

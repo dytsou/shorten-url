@@ -1203,13 +1203,7 @@ export default function App() {
             >
               Docs
             </a>
-            <a
-              href="https://github.com/dytsou/shorten-url/blob/main/docs/api/openapi.yaml"
-              target="_blank"
-              rel="noreferrer"
-            >
-              API
-            </a>
+            <a href="/api/">API</a>
           </nav>
           <p>
             © 2026 dytsou. Licensed under{" "}

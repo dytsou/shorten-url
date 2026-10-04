@@ -5,6 +5,8 @@ import { endpointsFromFrontend } from "./endpoints.js";
 import { createShortener } from "./shortener.js";
 import { createRuntimeConfig } from "./runtime-config.js";
 
+const API_DOC_PATHS = new Set(["/api/", "/api/index.html", "/api/openapi.yaml"]);
+
 async function fetchDocumentation(request, requestURL, frontend) {
   const pagesBase = frontend.pagesBase || frontend.url;
   if (!pagesBase) {
@@ -70,15 +72,13 @@ export function createWorkerHandler({
         allowedApiPaths: ["/", "/shorten"],
       });
     }
-    if (
-      homePath !== "/" &&
-      (request.method === "GET" || request.method === "HEAD") &&
-      (requestURL.pathname === "/api" || requestURL.pathname.startsWith("/api/"))
-    ) {
+    if (request.method === "GET" || request.method === "HEAD") {
       if (requestURL.pathname === "/api") {
         return Response.redirect(new URL(`/api/${requestURL.search}`, requestURL), 308);
       }
-      return fetchDocumentation(request, requestURL, config.frontend);
+      if (API_DOC_PATHS.has(requestURL.pathname)) {
+        return fetchFrontendAsset(env, request, requestURL.pathname);
+      }
     }
     const variantResponse = await flagRoutes.evaluateShortening(request, requestURL.pathname, () =>
       fetchFrontendAsset(env, request, "/")
