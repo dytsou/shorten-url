@@ -7,6 +7,8 @@ info:
 
     Shortening requests use `POST /`, regardless of the page path. The production
     branch may mount the product page at `/shorten`; API routes remain rooted at `/`.
+    On production, `GET /` serves the documentation landing page and `GET /shorten`
+    serves the product interface.
     Short links resolve through `GET /{key}`. Flag definitions are managed at
     `/settings/api/*`; these routes require Cloudflare Access. Mutating management
     requests also require a CSRF token obtained from `/settings/api/csrf`.
@@ -53,10 +55,10 @@ paths:
     get:
       tags: [Short links]
       operationId: getHomepage
-      summary: Get the Shorten URL application
+      summary: Get the public landing page
       responses:
         "200":
-          description: Worker-hosted application HTML.
+          description: Production documentation HTML. Other deployments may serve the application here.
           content:
             text/html:
               schema:

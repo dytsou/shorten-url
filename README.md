@@ -1,6 +1,6 @@
 # URL Shortener
 
-A URL shortener built with Cloudflare Workers, Cloudflare KV, and a responsive React interface. The Worker serves the product UI and redirects, while `docs/` contains the documentation and OpenAPI reference.
+A URL shortener built with Cloudflare Workers, Cloudflare KV, and a responsive React interface. On the production branch, the Worker serves the product UI at `/shorten`, keeps shortening APIs at the root, and exposes Cloudflare Pages documentation at `/` and `/api/`.
 
 [![Built with Cloudflare](https://workers.cloudflare.com/built-with-cloudflare.svg)](https://cloudflare.com)
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/dytsou/shorten-url)
@@ -38,9 +38,9 @@ pnpm build
 pnpm dev
 ```
 
-`pnpm dev`, `pnpm preview`, and `pnpm deploy` build `frontend/dist` before running Wrangler. The Worker serves the UI at `GET /`. Only the `production` branch mounts its product page at `/shorten`; other branch previews stay at `/`. Regardless of the page path, the UI sends API requests to `POST /` and `/settings/api/*`. Standalone settings pages are not exposed.
+`pnpm dev`, `pnpm preview`, and `pnpm deploy` build `frontend/dist` before running Wrangler. The production Worker serves the UI at `GET /shorten`; `GET /` and `/api/` proxy the documentation published from `docs/` on Cloudflare Pages. Shortening requests stay at `POST /`, and protected settings APIs stay under `/settings/api/*`.
 
-Production must use an Access-protected custom hostname, set `workers_dev = false`, and set `ACCESS_ALLOWED_HOSTS` to that hostname. Keep `CLOUDFLARE_API_TOKEN`, `FLAGSHIP_CSRF_SECRET`, and provider credentials in Cloudflare/GitHub secrets, never Vite metadata or tracked configuration. Optional `FRONTEND_URL` and `FRONTEND_PAGES_BASE` retain legacy error/interstitial pages only; they are not used to serve the normal UI.
+Production must use an Access-protected custom hostname, set `workers_dev = false`, and set `ACCESS_ALLOWED_HOSTS` to that hostname. Keep `CLOUDFLARE_API_TOKEN`, `FLAGSHIP_CSRF_SECRET`, and provider credentials in Cloudflare/GitHub secrets, never Vite metadata or tracked configuration. `FRONTEND_URL` and `FRONTEND_PAGES_BASE` select the Pages site used for docs and legacy error/interstitial pages.
 
 The Worker deployment workflow reads the non-secret GitHub variables
 `LINKS_KV_NAMESPACE_ID` and `ACCESS_ALLOWED_HOSTS`, plus the
@@ -91,7 +91,7 @@ The `LINKS` binding in `wrangler.toml` omits an account-specific namespace ID so
 
 The `docs/` directory contains the API reference and documentation. To create a Pages site, connect your repository, set the production branch to the branch containing your documentation, leave the build command blank, and use `docs` as the output directory.
 
-This repository's Cloudflare Pages project publishes `docs/` from the `production` branch. The product UI is served by the Worker and does not depend on the Pages site.
+This repository's Cloudflare Pages project publishes `docs/` from the `production` branch. The Worker serves the product UI at `/shorten` from its `ASSETS` binding and proxies the Pages homepage and API reference at `/` and `/api/`.
 
 For custom error and interstitial pages, set `frontend.pagesBase` to the directory containing those files.
 
@@ -101,13 +101,16 @@ The Worker returns short URLs using the request's origin, so configure its publi
 
 ### Frontend Configuration
 
-| Option                   | Description                                             | Default |
-| ------------------------ | ------------------------------------------------------- | ------- |
-| `frontend.url`           | Optional origin for legacy error and interstitial pages | `""`    |
-| `frontend.pagesBase`     | Base URL for hosted error and interstitial pages        | `url`   |
-| `frontend.workerOrigin`  | Public Worker origin for a separately hosted frontend   | `""`    |
-| `frontend.displayDomain` | Domain shown in UI (null = auto-detect)                 | `null`  |
-| `frontend.theme`         | UI theme selection                                      | `""`    |
+`frontend.homePath` selects the product page route. It defaults to `/`; the production configuration sets it to `/shorten`.
+
+| Option                   | Description                                                     | Default |
+| ------------------------ | --------------------------------------------------------------- | ------- |
+| `frontend.homePath`      | Worker path that serves the product UI                          | `/`     |
+| `frontend.url`           | Cloudflare Pages origin for public docs and legacy hosted pages | `""`    |
+| `frontend.pagesBase`     | Base URL for docs and hosted error/interstitial pages           | `url`   |
+| `frontend.workerOrigin`  | Public Worker origin for a separately hosted frontend           | `""`    |
+| `frontend.displayDomain` | Domain shown in UI (null = auto-detect)                         | `null`  |
+| `frontend.theme`         | UI theme selection                                              | `""`    |
 
 ### Worker Configuration
 
@@ -144,7 +147,7 @@ The Worker returns short URLs using the request's origin, so configure its publi
 
 1. Add a custom domain to the Cloudflare Worker and protect it with Cloudflare Access.
 2. Add a custom domain to the Cloudflare Pages project for documentation.
-3. Set `frontend.url` only when using separately hosted legacy error or interstitial pages.
+3. Set `frontend.url` and `frontend.pagesBase` to the Pages origin used for the production docs proxy.
 
 ### Google Safe Browsing
 
@@ -174,7 +177,7 @@ These files are not included in this repository. The Worker fetches their curren
 
 ## 📖 API Documentation
 
-The API reference is a static Swagger UI published from `docs/api/`; it is not served by the Worker at `/api`.
+The API reference is a static Swagger UI published from `docs/api/`. The production Worker proxies it at `/api/` from Cloudflare Pages.
 
 ### OpenAPI Specification
 
@@ -221,7 +224,8 @@ Redirects to the stored destination with HTTP 302. Query parameters from the sho
 
 ### Additional Endpoints
 
-- **GET** `/` - Serves the Worker-hosted React interface
+- **GET** `/` - Serves the public documentation landing page on production
+- **GET** `/shorten` - Serves the Worker-hosted React interface on production
 - **OPTIONS** - Returns a CORS preflight response
 
 ### Flagship Management API
