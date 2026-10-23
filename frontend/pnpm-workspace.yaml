@@ -1,0 +1,5 @@
+# Transitive security pins (Dependabot).
+overrides:
+  "@babel/core": "7.29.6"
+  browserslist: "4.28.7"
+  baseline-browser-mapping: "2.11.0"
