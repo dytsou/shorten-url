@@ -40,20 +40,11 @@
   },
   "devDependencies": {
     "prettier": "^3.9.10",
-    "vite": "7.3.7",
+    "vite": "8.3.6",
     "vitest": "^5.1.0",
     "wrangler": "^4.158.0"
   },
-  "pnpm": {
-    "overrides": {
-      "undici": "7.29.1",
-      "vite": "7.3.7",
-      "esbuild": "0.28.1",
-      "sharp": ">=0.35.4",
-      "source-map-js": "1.2.2"
-    }
-  },
-  "packageManager": "pnpm@10.22.0",
+  "packageManager": "pnpm@12.16.1",
   "files": [
     "src/worker.js",
     "src/lib/",

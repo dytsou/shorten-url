@@ -1,0 +1,12 @@
+minimumReleaseAge: 0
+
+overrides:
+  undici: 8.12.4
+  vite: 8.3.6
+  esbuild: 0.28.2
+  sharp: 0.35.5
+  source-map-js: 1.2.2
+
+allowBuilds:
+  esbuild@0.28.2: true
+  workerd@1.20261104.1: true

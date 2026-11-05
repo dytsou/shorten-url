@@ -1,3 +1,5 @@
+minimumReleaseAgeExclude:
+  - vite@8.3.6
 # Transitive security pins (Dependabot).
 overrides:
   "@babel/core": "7.29.6"
